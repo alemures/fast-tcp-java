@@ -13,6 +13,14 @@ public class Main {
 		socket.emit("event1", 1121);
 		socket.emit("event1", new byte[] { 1, 2, 3, 4 });
 		socket.emit("event1", new JSONObject("{\"key\":\"value\"}"));
+		
+//		socket.emit("event2", "Hello", new Socket.Ack() {
+//			
+//			@Override
+//			public void call(Object data) {
+//				System.out.println("ACK " + data);
+//			}
+//		});
 
 		socket.setEventListener(new Socket.EventListener() {
 			@Override
@@ -43,6 +51,12 @@ public class Main {
 			@Override
 			public void onReconnecting() {
 				System.out.println("fast-tcp onReconnecting");
+			}
+			
+			@Override
+			public void onMessage(String event, Object data, Socket.Ack cb) {
+				System.out.println(event + " " + data);
+				cb.call("Hello");
 			}
 
 			@Override

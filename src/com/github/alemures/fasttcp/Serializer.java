@@ -22,8 +22,8 @@ class Serializer {
 //	public static final byte MT_DATA_TO_SOCKET = 3;
 //	public static final byte MT_DATA_TO_ROOM = 4;
 //	public static final byte MT_DATA_BROADCAST = 5;
-//	public static final byte MT_DATA_WITH_ACK = 6;
-//	public static final byte MT_ACK = 7;
+	public static final byte MT_DATA_WITH_ACK = 6;
+	public static final byte MT_ACK = 7;
 	public static final byte MT_JOIN_ROOM = 8;
 	public static final byte MT_LEAVE_ROOM = 9;
 	public static final byte MT_LEAVE_ALL_ROOMS = 10;
@@ -79,10 +79,9 @@ class Serializer {
 		
 		short eventLength = Utils.readShort(buffer, offset);
 		offset += 2;
-
 		
 		byte[] eventBytes = Arrays.copyOfRange(buffer, offset, offset + eventLength);
-		String event = new String(eventBytes, Charset.forName("UTF-8"));
+		String event = new String(eventBytes, "UTF-8");
 		offset += eventLength;
 
 		int dataLength = Utils.readInt(buffer, offset);

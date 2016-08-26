@@ -4,7 +4,9 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -34,6 +36,7 @@ public class Socket {
 	private EventListener eventListener;
 	
 	private LinkedList<byte[]> queue;
+	private Map<Integer, Ack> acks = new HashMap<>();
 	
 	public String id;
 	
@@ -133,21 +136,41 @@ public class Socket {
 	public void emit(String event, String data) throws IOException {
 		send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
 	}
+	
+	public void emit(String event, String data, Ack ack) throws IOException {
+		send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_STRING, ack);
+	}
 
 	public void emit(String event, long data) throws IOException {
 		send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INT);
+	}
+	
+	public void emit(String event, long data, Ack ack) throws IOException {
+		send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_INT, ack);
 	}
 
 	public void emit(String event, double data) throws IOException {
 		send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DOUBLE);
 	}
+	
+	public void emit(String event, double data, Ack ack) throws IOException {
+		send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_DOUBLE, ack);
+	}
 
 	public void emit(String event, JSONObject data) throws IOException {
 		send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
 	}
+	
+	public void emit(String event, JSONObject data, Ack ack) throws IOException {
+		send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, ack);
+	}
 
 	public void emit(String event, byte[] data) throws IOException {
 		send(event, data, Serializer.MT_DATA, Serializer.DT_BUFFER);
+	}
+	
+	public void emit(String event, byte[] data, Ack ack) throws IOException {
+		send(event, data, Serializer.MT_DATA_WITH_ACK, Serializer.DT_BUFFER, ack);
 	}
 	
 	public void join(String room) throws IOException {
@@ -198,7 +221,25 @@ public class Socket {
 	}
 	
 	private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
-		byte[] message = Serializer.serialize(event.getBytes(), data, mt, dt, nextMessageId());
+		send(event, data, mt, dt, -1, null);
+	}
+	
+	private void send(String event, byte[] data, byte mt, byte dt, int messageId) throws IOException {
+		send(event, data, mt, dt, messageId, null);
+	}
+	
+	private void send(String event, byte[] data, byte mt, byte dt, Ack ack) throws IOException {
+		send(event, data, mt, dt, -1, ack);
+	}
+	
+	private void send(String event, byte[] data, byte mt, byte dt, int messageId, Ack ack) throws IOException {
+		messageId = messageId > 0 ? messageId : nextMessageId();
+		
+		if (ack != null) {
+			acks.put(messageId, ack);
+		}
+		
+		byte[] message = Serializer.serialize(event.getBytes(), data, mt, dt, messageId);
 		
 		if (connected) {
 			bufferedOutputStream.write(message);
@@ -252,12 +293,21 @@ public class Socket {
 			connected = false;
 		}
 		
-		public void process(Message message) {
+		public void process(final Message message) {
 			switch (message.mt) {
 			case Serializer.MT_DATA:
 				if (eventListener != null) {
 					eventListener.onMessage(message.event, message.data);
 				}
+				break;
+			case Serializer.MT_DATA_WITH_ACK:
+				if (eventListener != null) {
+					eventListener.onMessage(message.event, message.data, ackCallback(message));
+				}
+				break;
+			case Serializer.MT_ACK:
+				acks.get(message.messageId).call(message.data);
+				acks.remove(message.messageId);
 				break;
 			case Serializer.MT_REGISTER:
 				id = (String) message.data;
@@ -271,6 +321,24 @@ public class Socket {
 		}
 	}
 	
+	public Ack ackCallback(final Message message) {
+		return new Ack() {
+			@Override
+			public void call(Object data) {
+				try {
+					// TODO: object to byte[] depending of the message.dt
+					send(message.event, ((String)message.data).getBytes(), Serializer.MT_ACK, message.dt, message.messageId);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		};
+	}
+	
+	static interface Ack {
+		public void call(Object data);
+	}
+	
 	static abstract class EventListener {
 		public void onSocketConnect() {}
 		public void onEnd() {}
@@ -279,6 +347,7 @@ public class Socket {
 		public void onConnect() {}
 		public void onReconnecting() {}
 		public void onMessage(String event, Object data) {}
+		public void onMessage(String event, Object data, Ack cb) {}
 	}
 	
 	static class Opts {
