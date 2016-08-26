@@ -1,9 +1,8 @@
 package com.github.alemures.fasttcp;
 
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 
 import javax.management.RuntimeErrorException;
 
@@ -29,76 +28,80 @@ class Serializer {
 	public static final byte MT_LEAVE_ROOM = 9;
 	public static final byte MT_LEAVE_ALL_ROOMS = 10;
 
-	public static byte[] serialize(String event, byte[] data, byte mt, byte dt, int messageId) {
-		short eventLength = (short) event.length();
+	public static byte[] serialize(byte[] event, byte[] data, byte mt, byte dt, int messageId) {
+		short eventLength = (short) event.length;
 		int dataLength = data.length;
-
 		int messageLength = 8 + 2 + eventLength + 4 + dataLength;
 
-		ByteBuffer buff = ByteBuffer.allocate(4 + messageLength);
-		buff.order(ByteOrder.LITTLE_ENDIAN);
+		byte[] buffer = new byte[4 + messageLength];
+		int offset = 0;
+		
+		Utils.writeInt(messageLength, buffer, offset);
+		offset += 4;
+		
+		buffer[offset++] = VERSION;
+		buffer[offset++] = 0;
+		buffer[offset++] = dt;
+		buffer[offset++] = mt;
+	
+		Utils.writeInt(messageId, buffer, offset);
+		offset += 4;
+		
+		Utils.writeShort(eventLength, buffer, offset);
+		offset += 2;
+		
+		System.arraycopy(event, 0, buffer, offset, eventLength);
+		offset += eventLength;
+		
+		Utils.writeInt(dataLength, buffer, offset);
+		offset += 4;
+		
+		System.arraycopy(data, 0, buffer, offset, dataLength);
 
-		buff.putInt(messageLength);
-		buff.put(VERSION);
-		// Skip flags
-		buff.position(buff.position() + 1);
-		buff.put(dt);
-		buff.put(mt);
-		buff.putInt(messageId);
-		buff.putShort(eventLength);
-		buff.put(event.getBytes());
-		buff.putInt(dataLength);
-		buff.put(data);
-
-		return buff.array();
+		return buffer;
 	}
 
-	public static Message deserialize(byte[] buffData) throws UnsupportedEncodingException {
-		ByteBuffer buff = ByteBuffer.wrap(buffData);
-		buff.order(ByteOrder.LITTLE_ENDIAN);
-
-		buff.position(buff.position() + 4);
-		
-		byte version = buff.get();
+	public static Message deserialize(byte[] buffer) throws UnsupportedEncodingException {
+		int offset = 4;
+				
+		byte version = buffer[offset++];
 		if (version != VERSION) {
 			throw new RuntimeException("Message version " + version
 					+ " and Serializer version " + VERSION + " doesn\'t match");
 		}
 		
-		// Skip flags
-		buff.position(buff.position() + 1);
+		offset++; // Skip unused flags
+		byte dt = buffer[offset++];
+		byte mt = buffer[offset++];
+		
+		int messageId = Utils.readInt(buffer, offset);
+		offset += 4;
+		
+		short eventLength = Utils.readShort(buffer, offset);
+		offset += 2;
 
-		byte dt = buff.get();
-		byte mt = buff.get();
-		int messageId = buff.getInt();
-		short eventLength = buff.getShort();
-
-		byte[] eventBytes = new byte[eventLength];
-		buff.get(eventBytes, 0, eventLength);
+		
+		byte[] eventBytes = Arrays.copyOfRange(buffer, offset, offset + eventLength);
 		String event = new String(eventBytes, Charset.forName("UTF-8"));
+		offset += eventLength;
 
-		int dataLength = buff.getInt();
+		int dataLength = Utils.readInt(buffer, offset);
+		offset += 4;
 
 		switch (dt) {
 		case DT_STRING:
-			byte[] dataBytes = new byte[dataLength];
-			buff.get(dataBytes, 0, dataLength);
+			byte[] dataBytes = Arrays.copyOfRange(buffer, offset, offset + dataLength);
 			return new Message(event, new String(dataBytes, "UTF-8"), messageId, mt, dt);
 		case DT_BUFFER:
-			byte[] dataBytes2 = new byte[dataLength];
-			buff.get(dataBytes2, 0, dataLength);
+			byte[] dataBytes2 = Arrays.copyOfRange(buffer, offset, offset + dataLength);
 			return new Message(event, dataBytes2, messageId, mt, dt);
-		case DT_INT:
-			byte[] dataBytes3 = new byte[6];
-			buff.get(dataBytes3, 0, 6);
-			return new Message(event, Utils.int48FromByteArray(dataBytes3), messageId, mt, dt);
-		case DT_DOUBLE:
-			double dataDouble = buff.getDouble();
-			return new Message(event, dataDouble, messageId, mt, dt);
 		case DT_OBJECT:
-			byte[] dataBytes4 = new byte[dataLength];
-			buff.get(dataBytes4, 0, dataLength);
-			return new Message(event, new JSONObject(new String(dataBytes4, "UTF-8")), messageId, mt, dt);
+			byte[] dataBytes3 = Arrays.copyOfRange(buffer, offset, offset + dataLength);
+			return new Message(event, new JSONObject(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
+		case DT_INT:
+			return new Message(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
+		case DT_DOUBLE:
+			return new Message(event, Utils.readDouble(buffer, offset), messageId, mt, dt);
 		default:
 			throw new RuntimeErrorException(new Error("Invalid data type: " + dt));
 		}

@@ -24,25 +24,10 @@ class Utils {
 	}
 
 	public static byte[] doubleToByteArray(double value) {
-		long l = Double.doubleToRawLongBits(value);
-		return longToByteArray(l);
+		return longToByteArray(Double.doubleToRawLongBits(value));
 	}
 
-	public static long int48FromByteArray(byte[] b) {
-		return int48FromBytes(b[0], b[1], b[2], b[3], b[4], b[5]);
-	}
-
-	public static long int48FromBytes(byte b1, byte b2, byte b3, byte b4, byte b5,
-			byte b6) {
-		return (b1 & 0xFFL) |
-				(b2 & 0xFFL) << 8 |
-				(b3 & 0xFFL) << 16 |
-				(b4 & 0xFFL) << 24 |
-				(b5 & 0xFFL) << 32 |
-				(b6 & 0xFFL) << 40;
-	}
-
-	public static void writeInt48ToBuffer(long value, byte[] buffer, int offset) {
+	public static void writeInt48(long value, byte[] buffer, int offset) {
 		buffer[offset] = (byte) value;
 		buffer[offset + 1] = (byte) (value >> 8);
 		buffer[offset + 2] = (byte) (value >> 16);
@@ -50,12 +35,53 @@ class Utils {
 		buffer[offset + 4] = (byte) (value >> 32);
 		buffer[offset + 5] = (byte) (value >> 40);
 	}
+	
+	public static void writeInt(long value, byte[] buffer, int offset) {
+		buffer[offset] = (byte) value;
+		buffer[offset + 1] = (byte) (value >> 8);
+		buffer[offset + 2] = (byte) (value >> 16);
+		buffer[offset + 3] = (byte) (value >> 24);
+	}
+	
+	public static void writeShort(long value, byte[] buffer, int offset) {
+		buffer[offset] = (byte) value;
+		buffer[offset + 1] = (byte) (value >> 8);
+	}
+	
+	public static long readLong(byte[] buffer, int offset) {
+		return (buffer[offset] & 0xFFL) |
+				(buffer[offset + 1] & 0xFFL) << 8 |
+				(buffer[offset + 2] & 0xFFL) << 16 |
+				(buffer[offset + 3] & 0xFFL) << 24 |
+				(buffer[offset + 4] & 0xFFL) << 32 |
+				(buffer[offset + 5] & 0xFFL) << 40 |
+				(buffer[offset + 6] & 0xFFL) << 48 |
+				(buffer[offset + 7] & 0xFFL) << 56;
+	}
+	
+	public static double readDouble(byte[] buffer, int offset) {
+		return Double.longBitsToDouble(readLong(buffer, offset));
+	}
+	
+	public static long readInt48(byte[] buffer, int offset) {
+		return (buffer[offset] & 0xFFL) |
+				(buffer[offset + 1] & 0xFFL) << 8 |
+				(buffer[offset + 2] & 0xFFL) << 16 |
+				(buffer[offset + 3] & 0xFFL) << 24 |
+				(buffer[offset + 4] & 0xFFL) << 32 |
+				(buffer[offset + 5] & 0xFFL) << 40;
+	}
+	
+	public static int readInt(byte[] buffer, int offset) {
+		return (buffer[offset] & 0xFF) |
+				(buffer[offset + 1] & 0xFF) << 8 |
+				(buffer[offset + 2] & 0xFF) << 16 |
+				(buffer[offset + 3] & 0xFF) << 24;
+	}
 
-	public static void copyBuffer(byte[] source, byte[] target, int targetStart,
-			int sourceStart, int sourceEnd) {
-		for (int i = 0; i < sourceEnd - sourceStart; i++) {
-			target[targetStart + i] = source[sourceStart + i];
-		}
+	public static short readShort(byte[] buffer, int offset) {
+		return (short)((buffer[offset] & 0xFF) |
+				(buffer[offset + 1] & 0xFF) << 8);
 	}
 	
 	public static String byteArrayToLiteralString(byte[] array) {

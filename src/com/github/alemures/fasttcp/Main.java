@@ -6,7 +6,7 @@ import org.json.JSONObject;
 
 public class Main {
 	public static void main(String[] args) throws IOException {
-		final Socket socket = new Socket("localhost", 5000);
+		Socket socket = new Socket("localhost", 5000);
 
 		socket.emit("event1", "Hello, World!");
 		socket.emit("event1", 123.23);

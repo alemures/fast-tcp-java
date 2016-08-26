@@ -4,7 +4,6 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -100,8 +99,6 @@ public class Socket {
 		}
 	}
 	
-	
-	
 	public void end() {
 		destroy();
 	}
@@ -188,7 +185,7 @@ public class Socket {
 	}
  	
 	private void flushQueue() throws IOException {
-		if (queue.size() == 0) {
+		if (!opts.useQueue || queue.size() == 0) {
 			return;
 		}
 		
@@ -201,12 +198,12 @@ public class Socket {
 	}
 	
 	private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
-		byte[] message = Serializer.serialize(event, data, mt, dt, nextMessageId());
+		byte[] message = Serializer.serialize(event.getBytes(), data, mt, dt, nextMessageId());
 		
 		if (connected) {
 			bufferedOutputStream.write(message);
 			bufferedOutputStream.flush();
-		} else {
+		} else if (opts.useQueue) {
 			if (queue.size() + 1 > opts.queueSize) {
 				queue.poll();
 			}
@@ -231,7 +228,7 @@ public class Socket {
 			int bytesRead;
 			try {
 				while((bytesRead = bufferedInputStream.read(chunk)) != -1) {
-					ArrayList<byte[]> buffers = reader.read(Arrays.copyOfRange(chunk, 0, bytesRead));
+					ArrayList<byte[]> buffers = reader.read(chunk, bytesRead);
 					for (byte[] buffer: buffers) {
 						process(Serializer.deserialize(buffer));
 					}
