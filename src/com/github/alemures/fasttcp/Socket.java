@@ -25,16 +25,18 @@ public class Socket {
 	private ExecutorService executorService;
 	private FutureExecutor futureExecutor;
 	
-	private boolean connected;
 	private java.net.Socket socket;
+	private boolean connected;
+	private boolean manuallyClosed;
+	private int messageId = 1;
 	private BufferedInputStream bufferedInputStream;
 	private BufferedOutputStream bufferedOutputStream;
-	public String id;
-	private int messageId = 1;
-	private boolean userEnded = false;
-	private Listener listener;
+	
+	private EventListener eventListener;
 	
 	private LinkedList<byte[]> queue;
+	
+	public String id;
 	
 	public Socket(String host, int port) {
 		this(host, port, new Opts());
@@ -56,6 +58,7 @@ public class Socket {
 	
 	public void connect() {
 		if (!connected) {
+			manuallyClosed = false;
 			executorService = Executors.newSingleThreadExecutor();
 			futureExecutor = new FutureExecutor(executorService);
 			futureExecutor.submit(new Callable<Void>() {
@@ -70,24 +73,26 @@ public class Socket {
 			}).addCallback(new FutureCallback<Void>() {
 				@Override
 				public void onSuccess(Void result) {
-					if (listener != null) {
-						listener.onSocketConnect();
-					}
+					connected = true;
 					
 					try {
 						flushQueue();
 					} catch (Exception e) {
-						listener.onError(e);
+						eventListener.onError(e);
+					}
+					
+					if (eventListener != null) {
+						eventListener.onSocketConnect();
 					}
 				}
 				@Override
 				public void onFailure(Throwable failure) {
-					if (listener != null) {
-						listener.onError(failure);
-						listener.onClose();
+					if (eventListener != null) {
+						eventListener.onError(failure);
+						eventListener.onClose();
 					}
 					
-					if (opts.reconnect && !userEnded) {
+					if (opts.reconnect && !manuallyClosed) {
 						reconnect();
 					}
 				}
@@ -95,16 +100,7 @@ public class Socket {
 		}
 	}
 	
-	private void reconnect() {
-		futureExecutor.submit(new Callable<Void>() {
-			@Override
-			public Void call() throws Exception {
-				Thread.sleep(opts.reconnectInterval);
-				connect();
-				return null;
-			}
-		});
-	}
+	
 	
 	public void end() {
 		destroy();
@@ -112,7 +108,7 @@ public class Socket {
 
 	public void destroy() {
 		if (connected) {
-			userEnded = true;
+			manuallyClosed = true;
 			futureExecutor.submit(new Callable<Void>() {
 				@Override
 				public Void call() throws Exception {
@@ -122,49 +118,75 @@ public class Socket {
 			}).addCallback(new FutureCallback<Void>() {
 				@Override
 				public void onSuccess(Void result) {
-					if (listener != null) {
-						listener.onEnd();
-						listener.onClose();
+					if (eventListener != null) {
+						eventListener.onEnd();
+						eventListener.onClose();
 					}
 					
 					executorService.shutdown();
 				}
 				@Override
 				public void onFailure(Throwable failure) {
-					listener.onError(failure);
+					eventListener.onError(failure);
 				}
 			});
 		}
+	}
+	
+	public void emit(String event, String data) throws IOException {
+		send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
+	}
+
+	public void emit(String event, long data) throws IOException {
+		send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INT);
+	}
+
+	public void emit(String event, double data) throws IOException {
+		send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DOUBLE);
+	}
+
+	public void emit(String event, JSONObject data) throws IOException {
+		send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
+	}
+
+	public void emit(String event, byte[] data) throws IOException {
+		send(event, data, Serializer.MT_DATA, Serializer.DT_BUFFER);
+	}
+	
+	public void join(String room) throws IOException {
+		send("", room.getBytes(), Serializer.MT_JOIN_ROOM, Serializer.DT_STRING);
+	}
+	
+	public void leave(String room) throws IOException {
+		send("", room.getBytes(), Serializer.MT_LEAVE_ROOM, Serializer.DT_STRING);
+	}
+	
+	public void leaveAll() throws IOException {
+		send("", new byte[0], Serializer.MT_LEAVE_ALL_ROOMS, Serializer.DT_STRING);
+	}
+	
+	private void reconnect() {
+		futureExecutor.submit(new Callable<Void>() {
+			@Override
+			public Void call() throws Exception {
+				Thread.sleep(opts.reconnectInterval);
+				if (eventListener != null) {
+					eventListener.onReconnecting();
+				}
+				connect();
+				return null;
+			}
+		});
 	}
 	
 	public int getVersion() {
 		return Serializer.VERSION;
 	}
 	
-	public void setListener(Listener listener) {
-		this.listener = listener;
+	public void setEventListener(EventListener listener) {
+		this.eventListener = listener;
 	}
-	
-	public void emit(String event, String data) throws IOException {
-		send(Serializer.serialize(event, data, Serializer.MT_DATA, nextMessageId()));
-	}
-
-	public void emit(String event, long data) throws IOException {
-		send(Serializer.serialize(event, data, Serializer.MT_DATA, nextMessageId()));
-	}
-
-	public void emit(String event, double data) throws IOException {
-		send(Serializer.serialize(event, data, Serializer.MT_DATA, nextMessageId()));
-	}
-
-	public void emit(String event, JSONObject data) throws IOException {
-		send(Serializer.serialize(event, data, Serializer.MT_DATA, nextMessageId()));
-	}
-
-	public void emit(String event, byte[] data) throws IOException {
-		send(Serializer.serialize(event, data, Serializer.MT_DATA, nextMessageId()));
-	}
-	
+ 	
 	private void flushQueue() throws IOException {
 		if (queue.size() == 0) {
 			return;
@@ -178,15 +200,17 @@ public class Socket {
 		queue.clear();
 	}
 	
-	private void send(byte[] data) throws IOException {
+	private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
+		byte[] message = Serializer.serialize(event, data, mt, dt, nextMessageId());
+		
 		if (connected) {
-			bufferedOutputStream.write(data);
+			bufferedOutputStream.write(message);
 			bufferedOutputStream.flush();
 		} else {
 			if (queue.size() + 1 > opts.queueSize) {
 				queue.poll();
 			}
-			queue.offer(data);
+			queue.offer(message);
 		}
 	}
 	
@@ -214,18 +238,18 @@ public class Socket {
 				}
 				
 			} catch (IOException e) {
-				if (listener != null) {
-					listener.onError(e);
+				if (eventListener != null) {
+					eventListener.onError(e);
 				}
 			}
 			
-			if (opts.reconnect && !userEnded) {
+			if (opts.reconnect && !manuallyClosed) {
 				reconnect();
 			}
 			
-			if (listener != null) {
-				listener.onEnd();
-				listener.onClose();
+			if (eventListener != null) {
+				eventListener.onEnd();
+				eventListener.onClose();
 			}
 			
 			connected = false;
@@ -234,15 +258,14 @@ public class Socket {
 		public void process(Message message) {
 			switch (message.mt) {
 			case Serializer.MT_DATA:
-				if (listener != null) {
-					listener.onMessage(message.event, message.data);
+				if (eventListener != null) {
+					eventListener.onMessage(message.event, message.data);
 				}
 				break;
 			case Serializer.MT_REGISTER:
 				id = (String) message.data;
-				connected = true;
-				if (listener != null) {
-					listener.onConnect();
+				if (eventListener != null) {
+					eventListener.onConnect();
 				}
 				break;
 			default:
@@ -251,12 +274,13 @@ public class Socket {
 		}
 	}
 	
-	static abstract class Listener {
+	static abstract class EventListener {
 		public void onSocketConnect() {}
 		public void onEnd() {}
 		public void onClose() {}
 		public void onError(Throwable err) {}
 		public void onConnect() {}
+		public void onReconnecting() {}
 		public void onMessage(String event, Object data) {}
 	}
 	

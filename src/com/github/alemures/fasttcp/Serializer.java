@@ -25,31 +25,11 @@ class Serializer {
 //	public static final byte MT_DATA_BROADCAST = 5;
 //	public static final byte MT_DATA_WITH_ACK = 6;
 //	public static final byte MT_ACK = 7;
-//	public static final byte MT_JOIN_ROOM = 8;
-//	public static final byte MT_LEAVE_ROOM = 9;
-//	public static final byte MT_LEAVE_ALL_ROOMS = 10;
-	
-	public static byte[] serialize(String event, String data, byte mt, int messageId) {
-		return serialize(event, data.getBytes(), mt, messageId, DT_STRING);
-	}
-	
-	public static byte[] serialize(String event, long data, byte mt, int messageId) {
-		return serialize(event, Utils.int48ToByteArray(data), mt, messageId, DT_INT);
-	}
-	
-	public static byte[] serialize(String event, double data, byte mt, int messageId) {
-		return serialize(event, Utils.doubleToByteArray(data), mt, messageId, DT_DOUBLE);
-	}
-	
-	public static byte[] serialize(String event, JSONObject data, byte mt, int messageId) {
-		return serialize(event, data.toString().getBytes(), mt, messageId, DT_OBJECT);
-	}
-	
-	public static byte[] serialize(String event, byte[] data, byte mt, int messageId) {
-		return serialize(event, data, mt, messageId, DT_BUFFER);
-	}
+	public static final byte MT_JOIN_ROOM = 8;
+	public static final byte MT_LEAVE_ROOM = 9;
+	public static final byte MT_LEAVE_ALL_ROOMS = 10;
 
-	private static byte[] serialize(String event, byte[] data, byte mt, int messageId, byte dt) {
+	public static byte[] serialize(String event, byte[] data, byte mt, byte dt, int messageId) {
 		short eventLength = (short) event.length();
 		int dataLength = data.length;
 
