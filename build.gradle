@@ -1,0 +1,14 @@
+apply plugin: 'java'
+
+jar {
+    baseName = 'fast-tcp'
+    version =  '0.0.1'
+}
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    compile "org.json:json:20160810"
+}
