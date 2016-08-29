@@ -4,8 +4,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
 
 public class Main {
     public static void main(String[] args) throws IOException {
@@ -26,57 +24,32 @@ public class Main {
 
         socket.emit("array", new JSONArray().put(1).put(2).put(3));
 
-        socket.setEventListener(new Socket.EventListener() {
-            @Override
-            public void onEnd() {
-                System.out.println("fast-tcp onEnd");
-            }
+        socket.on("end", (args) -> System.out.println("fast-tcp end"));
+        socket.on("error", (args) -> System.out.println("fast-tcp error " + args[0]));
+        socket.on("close", (args) -> System.out.println("fast-tcp close"));
+        socket.on("socket_connect", (args) -> System.out.println("fast-tcp socket_connected"));
+        socket.on("connect", (args) -> System.out.println("fast-tcp connect"));
+        socket.on("reconnecting", (args) -> System.out.println("fast-tcp reconnecting"));
 
-            @Override
-            public void onError(Throwable err) {
-                System.out.println("fast-tcp onError: " + err.getMessage());
-            }
+        socket.on("string", (args) -> System.out.println(args[0]));
+        socket.on("double", (args) -> System.out.println(args[0]));
+        socket.on("int", (args) -> System.out.println(args[0]));
+        socket.on("buffer", (args) -> System.out.println(Utils.byteArrayToLiteralString((byte[]) args[0])));
+        socket.on("object", (args) -> System.out.println(args[0]));
 
-            @Override
-            public void onClose() {
-                System.out.println("fast-tcp onClose");
-            }
+        socket.on("array", (args) -> System.out.println(args[0]));
+        socket.on("div", (args) -> {
+            JSONObject numbers = (JSONObject) args[0];
+            Socket.Ack ack = (Socket.Ack) args[1];
 
-            @Override
-            public void onSocketConnect() {
-                System.out.println("fast-tcp onSocketConnected");
-            }
-
-            @Override
-            public void onConnect() {
-                System.out.println("fast-tcp onConnect");
-            }
-
-            @Override
-            public void onReconnecting() {
-                System.out.println("fast-tcp onReconnecting");
-            }
-
-            @Override
-            public void onMessage(String event, Object data) {
-                System.out.println("fast-tcp onMessage: " + event + " -> " + data);
-            }
-
-            @Override
-            public void onMessage(String event, Object data, Socket.Ack ack) {
-                if (event.equals("div")) {
-                    JSONObject o = (JSONObject) data;
-                    ack.send(o.getDouble("a") / o.getDouble("b"));
-                    return;
-                }
-                System.out.println("fast-tcp onMessage with ack: "  + event + " -> " + data);
-                ack.send(1234);
-            }
+            ack.send(numbers.getDouble("a") / numbers.getDouble("b"));
         });
+
+        socket.connect();
     }
 
     public static void socketPerformance() throws IOException {
-        Socket socket = new Socket("localhost", 5000, new Socket.Opts().autoConnect(false));
+        Socket socket = new Socket("localhost", 5000);
         String temp = "";
 
         for (int i = 0; i < 10000; i++) {
@@ -85,16 +58,13 @@ public class Main {
 
         final String data = temp;
 
-        socket.setEventListener(new Socket.EventListener() {
-            @Override
-            public void onConnect() {
-                try {
-                    for(int i = 0; i < 100000; i++) {
-                        socket.emit("data", data);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
+        socket.on("connect", (args) -> {
+            try {
+                for(int i = 0; i < 100000; i++) {
+                    socket.emit("data", data);
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         });
 

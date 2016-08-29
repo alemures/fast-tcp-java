@@ -17,6 +17,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Socket {
+    public static final String EVENT_CONNECT = "connect";
+    public static final String EVENT_SOCKET_CONNECT = "socket_connect";
+    public static final String EVENT_END = "end";
+    public static final String EVENT_CLOSE = "close";
+    public static final String EVENT_ERROR = "error";
+    public static final String EVENT_RECONNECTING = "reconnecting";
+
     private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;
 
     private String host;
@@ -33,7 +40,7 @@ public class Socket {
     private BufferedInputStream bufferedInputStream;
     private BufferedOutputStream bufferedOutputStream;
 
-    private EventListener eventListener;
+    private Emitter emitter = new Emitter();
 
     private LinkedList<byte[]> queue;
     private Map<Integer, Callback> acks = new HashMap<>();
@@ -48,10 +55,6 @@ public class Socket {
         this.host = host;
         this.port = port;
         this.opts = opts;
-
-        if (opts.autoConnect) {
-            connect();
-        }
 
         if (opts.useQueue) {
             queue = new LinkedList<>();
@@ -80,20 +83,16 @@ public class Socket {
                     try {
                         flushQueue();
                     } catch (Exception e) {
-                        eventListener.onError(e);
+                        emitter.emit(EVENT_ERROR, e);
                     }
 
-                    if (eventListener != null) {
-                        eventListener.onSocketConnect();
-                    }
+                    emitter.emit(EVENT_SOCKET_CONNECT);
                 }
 
                 @Override
                 public void onFailure(Throwable failure) {
-                    if (eventListener != null) {
-                        eventListener.onError(failure);
-                        eventListener.onClose();
-                    }
+                    emitter.emit(EVENT_ERROR, failure);
+                    emitter.emit(EVENT_CLOSE);
 
                     if (opts.reconnect && !manuallyClosed) {
                         reconnect();
@@ -119,17 +118,15 @@ public class Socket {
             }).addCallback(new FutureCallback<Void>() {
                 @Override
                 public void onSuccess(Void result) {
-                    if (eventListener != null) {
-                        eventListener.onEnd();
-                        eventListener.onClose();
-                    }
+                    emitter.emit(EVENT_END);
+                    emitter.emit(EVENT_CLOSE);
 
                     executorService.shutdown();
                 }
 
                 @Override
                 public void onFailure(Throwable failure) {
-                    eventListener.onError(failure);
+                    emitter.emit(EVENT_ERROR, failure);
                 }
             });
         }
@@ -199,8 +196,24 @@ public class Socket {
         return Serializer.VERSION;
     }
 
-    public void setEventListener(EventListener listener) {
-        this.eventListener = listener;
+    public void on(String event, Emitter.Listener fn) {
+        emitter.on(event, fn);
+    }
+
+    public void once(String event, Emitter.Listener fn) {
+        emitter.once(event, fn);
+    }
+
+    public void off(String event, Emitter.Listener fn) {
+        emitter.off(event, fn);
+    }
+
+    public void off(String event) {
+        emitter.off(event);
+    }
+
+    public void off() {
+        emitter.off();
     }
 
     private void flushQueue() throws IOException {
@@ -221,9 +234,7 @@ public class Socket {
             @Override
             public Void call() throws Exception {
                 Thread.sleep(opts.reconnectInterval);
-                if (eventListener != null) {
-                    eventListener.onReconnecting();
-                }
+                emitter.emit(EVENT_RECONNECTING);
                 connect();
                 return null;
             }
@@ -270,7 +281,7 @@ public class Socket {
         return messageId;
     }
 
-    private Ack createAck(final Message message) {
+    private Ack createAck(Message message) {
         return new Ack() {
             @Override
             public void send(String data) {
@@ -301,9 +312,7 @@ public class Socket {
                 try {
                     Socket.this.send("", data, Serializer.MT_ACK, dt, message.messageId);
                 } catch (IOException e) {
-                    if (eventListener != null) {
-                        eventListener.onError(e);
-                    }
+                    emitter.emit(EVENT_ERROR, e);
                 }
             }
         };
@@ -325,19 +334,15 @@ public class Socket {
                 }
 
             } catch (IOException e) {
-                if (eventListener != null) {
-                    eventListener.onError(e);
-                }
+                emitter.emit(EVENT_ERROR, e);
             }
 
             if (opts.reconnect && !manuallyClosed) {
                 reconnect();
             }
 
-            if (eventListener != null) {
-                eventListener.onEnd();
-                eventListener.onClose();
-            }
+            emitter.emit(EVENT_END);
+            emitter.emit(EVENT_CLOSE);
 
             connected = false;
         }
@@ -345,14 +350,10 @@ public class Socket {
         private void process(final Message message) {
             switch (message.mt) {
                 case Serializer.MT_DATA:
-                    if (eventListener != null) {
-                        eventListener.onMessage(message.event, message.data);
-                    }
+                    emitter.emit(message.event, message.data);
                     break;
                 case Serializer.MT_DATA_WITH_ACK:
-                    if (eventListener != null) {
-                        eventListener.onMessage(message.event, message.data, createAck(message));
-                    }
+                    emitter.emit(message.event, message.data, createAck(message));
                     break;
                 case Serializer.MT_ACK:
                     if (acks.containsKey(message.messageId)) {
@@ -362,39 +363,11 @@ public class Socket {
                     break;
                 case Serializer.MT_REGISTER:
                     id = (String) message.data;
-                    if (eventListener != null) {
-                        eventListener.onConnect();
-                    }
+                    emitter.emit(EVENT_CONNECT);
                     break;
                 default:
                     throw new RuntimeException("Not implemented message type " + message.mt);
             }
-        }
-    }
-
-    public static class EventListener {
-        public void onSocketConnect() {
-        }
-
-        public void onEnd() {
-        }
-
-        public void onClose() {
-        }
-
-        public void onError(Throwable err) {
-        }
-
-        public void onConnect() {
-        }
-
-        public void onReconnecting() {
-        }
-
-        public void onMessage(String event, Object data) {
-        }
-
-        public void onMessage(String event, Object data, Ack ack) {
         }
     }
 
@@ -413,7 +386,6 @@ public class Socket {
     public static class Opts {
         private boolean reconnect = true;
         private long reconnectInterval = 1000;
-        private boolean autoConnect = true;
         private boolean useQueue = true;
         private int queueSize = 1024;
 
@@ -424,11 +396,6 @@ public class Socket {
 
         public Opts reconnectInterval(long reconnectInterval) {
             this.reconnectInterval = reconnectInterval;
-            return this;
-        }
-
-        public Opts autoConnect(boolean autoConnect) {
-            this.autoConnect = autoConnect;
             return this;
         }
 
