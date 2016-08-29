@@ -2,68 +2,68 @@ package com.github.alemures.fasttcp;
 
 import java.util.ArrayList;
 
-final class Reader {
-	private byte[] buffer;
-	private int offset;
-	private int bytesRead;
-	private int messageLength;
+class Reader {
+    private byte[] buffer;
+    private int offset;
+    private int bytesRead;
+    private int messageLength;
 
-	private int offsetChunk;
+    private int offsetChunk;
 
-	public ArrayList<byte[]> read(byte[] chunk, int effectiveChunkLength) {
-		offsetChunk = 0;
-		ArrayList<byte[]> buffers = new ArrayList<byte[]>();
+    ArrayList<byte[]> read(byte[] chunk, int effectiveChunkLength) {
+        offsetChunk = 0;
+        ArrayList<byte[]> buffers = new ArrayList<>();
 
-		while (offsetChunk < effectiveChunkLength) {
-			if (bytesRead < 4) {
-				if (readMessageLength(chunk, effectiveChunkLength)) {
-					createBuffer();
-				} else {
-					break;
-				}
-			}
+        while (offsetChunk < effectiveChunkLength) {
+            if (bytesRead < 4) {
+                if (readMessageLength(chunk, effectiveChunkLength)) {
+                    createBuffer();
+                } else {
+                    break;
+                }
+            }
 
-			if (bytesRead < buffer.length && !readMessageContent(chunk, effectiveChunkLength)) {
-				break;
-			}
+            if (bytesRead < buffer.length && !readMessageContent(chunk, effectiveChunkLength)) {
+                break;
+            }
 
-			// Buffer ready, store it and keep reading the chunk
-			buffers.add(buffer);
-			offset = 0;
-			bytesRead = 0;
-			messageLength = 0;
-		}
+            // Buffer ready, store it and keep reading the chunk
+            buffers.add(buffer);
+            offset = 0;
+            bytesRead = 0;
+            messageLength = 0;
+        }
 
-		return buffers;
-	}
+        return buffers;
+    }
 
-	private boolean readMessageLength(byte[] chunk, int effectiveChunkLength) {
-		for (; offsetChunk < effectiveChunkLength && bytesRead < 4; offsetChunk++, bytesRead++) {
-			messageLength |= chunk[offsetChunk] << (bytesRead * 8);
-		}
+    private boolean readMessageLength(byte[] chunk, int effectiveChunkLength) {
+        for (; offsetChunk < effectiveChunkLength && bytesRead < 4; offsetChunk++, bytesRead++) {
+            messageLength |= chunk[offsetChunk] << (bytesRead * 8);
+        }
 
-		return bytesRead == 4;
-	}
+        return bytesRead == 4;
+    }
 
-	private boolean readMessageContent(byte[] chunk, int effectiveChunkLength) {
-		int bytesToRead = buffer.length - bytesRead;
-		int bytesInChunk = effectiveChunkLength - offsetChunk;
-		int end = bytesToRead > bytesInChunk ? effectiveChunkLength : offsetChunk + bytesToRead;
-		
-		System.arraycopy(chunk, offsetChunk, buffer, offset, end - offsetChunk);
+    private boolean readMessageContent(byte[] chunk, int effectiveChunkLength) {
+        int bytesToRead = buffer.length - bytesRead;
+        int bytesInChunk = effectiveChunkLength - offsetChunk;
+        int end = bytesToRead > bytesInChunk ? effectiveChunkLength : offsetChunk + bytesToRead;
 
-		int bytesActuallyRead = end - offsetChunk;
+        System.arraycopy(chunk, offsetChunk, buffer, offset, end - offsetChunk);
 
-		bytesRead += bytesActuallyRead;
-		offset += bytesActuallyRead;
-		offsetChunk = end;
+        int bytesActuallyRead = end - offsetChunk;
 
-		return bytesRead == buffer.length;
-	}
+        bytesRead += bytesActuallyRead;
+        offset += bytesActuallyRead;
+        offsetChunk = end;
 
-	private void createBuffer() {
-		buffer = new byte[4 + messageLength];
-		Utils.writeInt48(messageLength, buffer, offset);
-		offset += 4;
-	}
+        return bytesRead == buffer.length;
+    }
+
+    private void createBuffer() {
+        buffer = new byte[4 + messageLength];
+        Utils.writeInt48(messageLength, buffer, offset);
+        offset += 4;
+    }
 }
