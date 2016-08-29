@@ -1,4 +1,4 @@
-package com.github.alemures.fasttcp.internal;
+package com.github.alemures.fasttcp.futures;
 
 public class ListenableFuture<V> {
 	private FutureCallback<V> callback;

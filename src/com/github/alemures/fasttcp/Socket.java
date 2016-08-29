@@ -13,8 +13,8 @@ import java.util.concurrent.Executors;
 
 import org.json.JSONObject;
 
-import com.github.alemures.fasttcp.internal.FutureCallback;
-import com.github.alemures.fasttcp.internal.FutureExecutor;
+import com.github.alemures.fasttcp.futures.FutureCallback;
+import com.github.alemures.fasttcp.futures.FutureExecutor;
 
 public class Socket {
 	private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;

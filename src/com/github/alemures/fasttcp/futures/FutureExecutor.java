@@ -1,4 +1,4 @@
-package com.github.alemures.fasttcp.internal;
+package com.github.alemures.fasttcp.futures;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
