@@ -2,6 +2,7 @@ package com.github.alemures.fasttcp;
 
 import com.github.alemures.fasttcp.futures.FutureCallback;
 import com.github.alemures.fasttcp.futures.FutureExecutor;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
@@ -163,6 +164,14 @@ public class Socket {
     }
 
     public void emit(String event, JSONObject data, Callback cb) throws IOException {
+        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
+    }
+
+    public void emit(String event, JSONArray data) throws IOException {
+        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
+    }
+
+    public void emit(String event, JSONArray data, Callback cb) throws IOException {
         send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
     }
 

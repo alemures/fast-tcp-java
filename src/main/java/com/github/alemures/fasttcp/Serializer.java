@@ -1,5 +1,6 @@
 package com.github.alemures.fasttcp;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import javax.management.RuntimeErrorException;
@@ -94,7 +95,14 @@ class Serializer {
                 return new Message(event, dataBytes2, messageId, mt, dt);
             case DT_OBJECT:
                 byte[] dataBytes3 = Arrays.copyOfRange(buffer, offset, offset + dataLength);
-                return new Message(event, new JSONObject(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
+
+                if (Utils.isJsonObject(dataBytes3)) {
+                    return new Message(event, new JSONObject(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
+                } else if (Utils.isJsonArray(dataBytes3)) {
+                    return new Message(event, new JSONArray(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
+                } else {
+                    throw new RuntimeErrorException(new Error("Invalid object"));
+                }
             case DT_INT:
                 return new Message(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
             case DT_DOUBLE:

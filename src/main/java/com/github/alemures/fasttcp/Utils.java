@@ -1,6 +1,9 @@
 package com.github.alemures.fasttcp;
 
 class Utils {
+    private static final byte CHAR_CODE_OPEN_BRACKET = 91;
+    private static final byte CHAR_CODE_OPEN_BRACE = 123;
+
     static byte[] int48ToByteArray(long value) {
         return new byte[]{
                 (byte) value,
@@ -82,6 +85,14 @@ class Utils {
     static short readShort(byte[] buffer, int offset) {
         return (short) ((buffer[offset] & 0xFF) |
                 (buffer[offset + 1] & 0xFF) << 8);
+    }
+
+    static boolean isJsonObject(byte[] buffer) {
+        return buffer[0] == CHAR_CODE_OPEN_BRACE;
+    }
+
+    static boolean isJsonArray(byte[] buffer) {
+        return buffer[0] == CHAR_CODE_OPEN_BRACKET;
     }
 
     static String byteArrayToLiteralString(byte[] array) {

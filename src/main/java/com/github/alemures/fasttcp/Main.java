@@ -1,11 +1,19 @@
 package com.github.alemures.fasttcp;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Main {
     public static void main(String[] args) throws IOException {
+        socket();
+//        socketPerformance();
+    }
+
+    public static void socket() throws IOException {
         Socket socket = new Socket("localhost", 5000);
 
         socket.emit("string", "Hello, World!");
@@ -15,6 +23,8 @@ public class Main {
         socket.emit("object", new JSONObject("{\"key\":\"value\"}"));
 
         socket.emit("sum-with-cb", new JSONObject().put("n1", 5).put("n2", 13), (data) -> System.out.println("Result: " + data));
+
+        socket.emit("array", new JSONArray().put(1).put(2).put(3));
 
         socket.setEventListener(new Socket.EventListener() {
             @Override
@@ -63,5 +73,31 @@ public class Main {
                 ack.send(1234);
             }
         });
+    }
+
+    public static void socketPerformance() throws IOException {
+        Socket socket = new Socket("localhost", 5000, new Socket.Opts().autoConnect(false));
+        String temp = "";
+
+        for (int i = 0; i < 10000; i++) {
+            temp += "a";
+        }
+
+        final String data = temp;
+
+        socket.setEventListener(new Socket.EventListener() {
+            @Override
+            public void onConnect() {
+                try {
+                    for(int i = 0; i < 100000; i++) {
+                        socket.emit("data", data);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+
+        socket.connect();
     }
 }
