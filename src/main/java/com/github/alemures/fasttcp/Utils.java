@@ -87,7 +87,7 @@ class Utils {
     static String byteArrayToLiteralString(byte[] array) {
         StringBuilder sb = new StringBuilder("[ ");
         for (byte bytee : array) {
-            sb.append(Integer.toString(bytee & 0xff, 16));
+            sb.append(Integer.toString(bytee & 0xFF, 16));
             sb.append(" ");
         }
         sb.append("]");
