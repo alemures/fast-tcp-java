@@ -2,12 +2,14 @@ package com.github.alemures.fasttcp;
 
 import com.github.alemures.fasttcp.futures.FutureCallback;
 import com.github.alemures.fasttcp.futures.FutureExecutor;
+import com.github.alemures.fasttcp.futures.ListenableFuture;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -25,27 +27,20 @@ public class Socket {
     public static final String EVENT_RECONNECTING = "reconnecting";
 
     private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;
-
+    public String id;
     private String host;
     private int port;
     private Opts opts;
-
-    private ExecutorService executorService;
-    private FutureExecutor futureExecutor;
-
     private java.net.Socket socket;
     private boolean connected;
     private boolean manuallyClosed;
     private int messageId = 1;
     private BufferedInputStream bufferedInputStream;
     private BufferedOutputStream bufferedOutputStream;
-
     private Emitter emitter = new Emitter();
-
+    private EventThread eventThread = new EventThread();
     private LinkedList<byte[]> queue;
     private Map<Integer, Callback> acks = new HashMap<>();
-
-    public String id;
 
     public Socket(String host, int port) {
         this(host, port, new Opts());
@@ -62,44 +57,45 @@ public class Socket {
     }
 
     public void connect() {
-        if (!connected) {
-            manuallyClosed = false;
-            executorService = Executors.newSingleThreadExecutor();
-            futureExecutor = new FutureExecutor(executorService);
-            futureExecutor.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    socket = new java.net.Socket(host, port);
-                    bufferedInputStream = new BufferedInputStream(socket.getInputStream());
-                    bufferedOutputStream = new BufferedOutputStream(socket.getOutputStream());
-                    new SocketReceiverThread().start();
-                    return null;
-                }
-            }).addCallback(new FutureCallback<Void>() {
-                @Override
-                public void onSuccess(Void result) {
-                    connected = true;
+        if (connected) return;
 
-                    try {
-                        flushQueue();
-                    } catch (Exception e) {
-                        emitter.emit(EVENT_ERROR, e);
-                    }
+        manuallyClosed = false;
+        eventThread.run(new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                socket = new java.net.Socket();
+                socket.connect(new InetSocketAddress(host, port), opts.timeout);
+                bufferedInputStream = new BufferedInputStream(socket.getInputStream());
+                bufferedOutputStream = new BufferedOutputStream(socket.getOutputStream());
+                new SocketReceiverThread().start();
+                return null;
+            }
+        }).addCallback(new FutureCallback<Void>() {
+            @Override
+            public void onSuccess(Void result) {
+                connected = true;
 
-                    emitter.emit(EVENT_SOCKET_CONNECT);
+                try {
+                    flushQueue();
+                } catch (Exception e) {
+                    emitter.emit(EVENT_ERROR, e);
                 }
 
-                @Override
-                public void onFailure(Throwable failure) {
-                    emitter.emit(EVENT_ERROR, failure);
-                    emitter.emit(EVENT_CLOSE);
+                emitter.emit(EVENT_SOCKET_CONNECT);
+            }
 
-                    if (opts.reconnect && !manuallyClosed) {
-                        reconnect();
-                    }
+            @Override
+            public void onFailure(Throwable failure) {
+                emitter.emit(EVENT_ERROR, failure);
+                emitter.emit(EVENT_CLOSE);
+
+                if (opts.reconnect && !manuallyClosed) {
+                    reconnect();
+                } else {
+                    eventThread.stop();
                 }
-            });
-        }
+            }
+        });
     }
 
     public void end() {
@@ -107,29 +103,29 @@ public class Socket {
     }
 
     public void destroy() {
-        if (connected) {
-            manuallyClosed = true;
-            futureExecutor.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    socket.close();
-                    return null;
-                }
-            }).addCallback(new FutureCallback<Void>() {
-                @Override
-                public void onSuccess(Void result) {
-                    emitter.emit(EVENT_END);
-                    emitter.emit(EVENT_CLOSE);
+        if (!connected) return;
 
-                    executorService.shutdown();
-                }
+        manuallyClosed = true;
+        eventThread.run(new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                socket.close();
+                return null;
+            }
+        }).addCallback(new FutureCallback<Void>() {
+            @Override
+            public void onSuccess(Void result) {
+                emitter.emit(EVENT_END);
+                emitter.emit(EVENT_CLOSE);
 
-                @Override
-                public void onFailure(Throwable failure) {
-                    emitter.emit(EVENT_ERROR, failure);
-                }
-            });
-        }
+                eventThread.stop();
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {
+                emitter.emit(EVENT_ERROR, failure);
+            }
+        });
     }
 
     public void emit(String event, String data) throws IOException {
@@ -204,16 +200,12 @@ public class Socket {
         emitter.once(event, fn);
     }
 
-    public void off(String event, Emitter.Listener fn) {
-        emitter.off(event, fn);
+    public void removeListener(String event, Emitter.Listener fn) {
+        emitter.removeListener(event, fn);
     }
 
-    public void off(String event) {
-        emitter.off(event);
-    }
-
-    public void off() {
-        emitter.off();
+    public void removeAllListeners(String event) {
+        emitter.removeAllListeners(event);
     }
 
     private void flushQueue() throws IOException {
@@ -230,7 +222,7 @@ public class Socket {
     }
 
     private void reconnect() {
-        futureExecutor.submit(new Callable<Void>() {
+        eventThread.run(new Callable<Void>() {
             @Override
             public Void call() throws Exception {
                 Thread.sleep(opts.reconnectInterval);
@@ -304,6 +296,11 @@ public class Socket {
             }
 
             @Override
+            public void send(JSONArray data) {
+                send(data.toString().getBytes(), Serializer.DT_OBJECT);
+            }
+
+            @Override
             public void send(byte[] data) {
                 send(data, Serializer.DT_BUFFER);
             }
@@ -316,6 +313,75 @@ public class Socket {
                 }
             }
         };
+    }
+
+    public interface Ack {
+        void send(String data);
+
+        void send(long data);
+
+        void send(double data);
+
+        void send(JSONObject data);
+
+        void send(JSONArray data);
+
+        void send(byte[] data);
+    }
+
+    public interface Callback {
+        void call(Object data);
+    }
+
+    public static class Opts {
+        private boolean reconnect = true;
+        private long reconnectInterval = 1000;
+        private boolean useQueue = true;
+        private int queueSize = 1024;
+        private int timeout = 20000;
+
+        public Opts reconnect(boolean reconnect) {
+            this.reconnect = reconnect;
+            return this;
+        }
+
+        public Opts reconnectInterval(long reconnectInterval) {
+            this.reconnectInterval = reconnectInterval;
+            return this;
+        }
+
+        public Opts useQueue(boolean useQueue) {
+            this.useQueue = useQueue;
+            return this;
+        }
+
+        public Opts queueSize(int queueSize) {
+            this.queueSize = queueSize;
+            return this;
+        }
+
+        public Opts timeout(int timeout) {
+            this.timeout = timeout;
+            return this;
+        }
+    }
+
+    private class EventThread {
+        private ExecutorService executorService;
+        private FutureExecutor futureExecutor;
+
+        private ListenableFuture<Void> run(Callable<Void> callable) {
+            if (executorService == null || executorService.isShutdown()) {
+                executorService = Executors.newSingleThreadExecutor();
+                futureExecutor = new FutureExecutor(executorService);
+            }
+
+            return futureExecutor.submit(callable);
+        }
+
+        private void stop() {
+            executorService.shutdown();
+        }
     }
 
     private class SocketReceiverThread extends Thread {
@@ -339,6 +405,8 @@ public class Socket {
 
             if (opts.reconnect && !manuallyClosed) {
                 reconnect();
+            } else {
+                eventThread.stop();
             }
 
             emitter.emit(EVENT_END);
@@ -368,45 +436,6 @@ public class Socket {
                 default:
                     throw new RuntimeException("Not implemented message type " + message.mt);
             }
-        }
-    }
-
-    public interface Ack {
-        void send(String data);
-        void send(long data);
-        void send(double data);
-        void send(JSONObject data);
-        void send(byte[] data);
-    }
-
-    public interface Callback {
-        void call(Object data);
-    }
-
-    public static class Opts {
-        private boolean reconnect = true;
-        private long reconnectInterval = 1000;
-        private boolean useQueue = true;
-        private int queueSize = 1024;
-
-        public Opts reconnect(boolean reconnect) {
-            this.reconnect = reconnect;
-            return this;
-        }
-
-        public Opts reconnectInterval(long reconnectInterval) {
-            this.reconnectInterval = reconnectInterval;
-            return this;
-        }
-
-        public Opts useQueue(boolean useQueue) {
-            this.useQueue = useQueue;
-            return this;
-        }
-
-        public Opts queueSize(int queueSize) {
-            this.queueSize = queueSize;
-            return this;
         }
     }
 }

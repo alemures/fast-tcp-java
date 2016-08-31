@@ -1,20 +1,25 @@
 package com.github.alemures.fasttcp;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
+import java.util.*;
 
 class Emitter {
-    private ConcurrentMap<String, ConcurrentLinkedQueue<Listener>> callbacks = new ConcurrentHashMap<>();
+    private Map<String, LinkedList<Listener>> callbacks = new HashMap<>();
+
+    private static boolean sameAs(Listener fn, Listener internal) {
+        if (fn.equals(internal)) {
+            return true;
+        } else if (internal instanceof OnceListener) {
+            return fn.equals(((OnceListener) internal).fn);
+        } else {
+            return false;
+        }
+    }
 
     Emitter on(String event, Listener fn) {
-        ConcurrentLinkedQueue<Listener> callbacks = this.callbacks.get(event);
+        LinkedList<Listener> callbacks = this.callbacks.get(event);
         if (callbacks == null) {
-            callbacks = new ConcurrentLinkedQueue<>();
-            ConcurrentLinkedQueue<Listener> tempCallbacks = this.callbacks.putIfAbsent(event, callbacks);
+            callbacks = new LinkedList<>();
+            LinkedList<Listener> tempCallbacks = this.callbacks.putIfAbsent(event, callbacks);
             if (tempCallbacks != null) {
                 callbacks = tempCallbacks;
             }
@@ -24,22 +29,17 @@ class Emitter {
     }
 
     Emitter once(final String event, final Listener fn) {
-        this.on(event, new OnceListener(event, fn));
+        on(event, new OnceListener(event, fn));
         return this;
     }
 
-    Emitter off() {
-        this.callbacks.clear();
+    Emitter removeAllListeners(String event) {
+        callbacks.remove(event);
         return this;
     }
 
-    Emitter off(String event) {
-        this.callbacks.remove(event);
-        return this;
-    }
-
-    Emitter off(String event, Listener fn) {
-        ConcurrentLinkedQueue<Listener> callbacks = this.callbacks.get(event);
+    Emitter removeListener(String event, Listener fn) {
+        LinkedList<Listener> callbacks = this.callbacks.get(event);
         if (callbacks != null) {
             Iterator<Listener> it = callbacks.iterator();
             while (it.hasNext()) {
@@ -54,7 +54,7 @@ class Emitter {
     }
 
     Emitter emit(String event, Object... args) {
-        ConcurrentLinkedQueue<Listener> callbacks = this.callbacks.get(event);
+        LinkedList<Listener> callbacks = this.callbacks.get(event);
         if (callbacks != null) {
             for (Listener fn : callbacks) {
                 fn.call(args);
@@ -64,24 +64,14 @@ class Emitter {
     }
 
     List<Listener> listeners(String event) {
-        ConcurrentLinkedQueue<Listener> callbacks = this.callbacks.get(event);
+        LinkedList<Listener> callbacks = this.callbacks.get(event);
         return callbacks != null ?
-                new ArrayList<Listener>(callbacks) : new ArrayList<Listener>(0);
+                new ArrayList<>(callbacks) : new ArrayList<>(0);
     }
 
     boolean hasListeners(String event) {
-        ConcurrentLinkedQueue<Listener> callbacks = this.callbacks.get(event);
+        LinkedList<Listener> callbacks = this.callbacks.get(event);
         return callbacks != null && !callbacks.isEmpty();
-    }
-
-    private static boolean sameAs(Listener fn, Listener internal) {
-        if (fn.equals(internal)) {
-            return true;
-        } else if (internal instanceof OnceListener) {
-            return fn.equals(((OnceListener) internal).fn);
-        } else {
-            return false;
-        }
     }
 
     interface Listener {
@@ -99,8 +89,8 @@ class Emitter {
 
         @Override
         public void call(Object... args) {
-            Emitter.this.off(this.event, this);
-            this.fn.call(args);
+            removeListener(event, this);
+            fn.call(args);
         }
     }
 }
