@@ -12,7 +12,7 @@ public class Main {
     }
 
     public static void socket() throws IOException {
-        Socket socket = new Socket("localhost", 5000,new Socket.Opts().timeout(3000));
+        Socket socket = new Socket("localhost", 5000);
 
         socket.emit("string", "Hello, World!");
         socket.emit("double", 123.23);

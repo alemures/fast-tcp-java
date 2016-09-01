@@ -338,7 +338,7 @@ public class Socket {
         private long reconnectInterval = 1000;
         private boolean useQueue = true;
         private int queueSize = 1024;
-        private int timeout = 20000;
+        private int timeout = 0; // Disabled by default
 
         public Opts reconnect(boolean reconnect) {
             this.reconnect = reconnect;
