@@ -10,10 +10,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -132,12 +129,20 @@ public class Socket {
         send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
     }
 
+    public void emit(String event, String data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.getBytes(), Serializer.DT_STRING, emitOpts);
+    }
+
     public void emit(String event, String data, Callback cb) throws IOException {
         send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_STRING, cb);
     }
 
     public void emit(String event, long data) throws IOException {
         send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INT);
+    }
+
+    public void emit(String event, long data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.int48ToByteArray(data), Serializer.DT_INT, emitOpts);
     }
 
     public void emit(String event, long data, Callback cb) throws IOException {
@@ -148,12 +153,20 @@ public class Socket {
         send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DOUBLE);
     }
 
+    public void emit(String event, double data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.doubleToByteArray(data), Serializer.DT_DOUBLE, emitOpts);
+    }
+
     public void emit(String event, double data, Callback cb) throws IOException {
         send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_DOUBLE, cb);
     }
 
     public void emit(String event, JSONObject data) throws IOException {
         send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
+    }
+
+    public void emit(String event, JSONObject data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
     }
 
     public void emit(String event, JSONObject data, Callback cb) throws IOException {
@@ -164,12 +177,20 @@ public class Socket {
         send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
     }
 
+    public void emit(String event, JSONArray data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
+    }
+
     public void emit(String event, JSONArray data, Callback cb) throws IOException {
         send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
     }
 
     public void emit(String event, byte[] data) throws IOException {
         send(event, data, Serializer.MT_DATA, Serializer.DT_BUFFER);
+    }
+
+    public void emit(String event, byte[] data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data, Serializer.DT_BUFFER, emitOpts);
     }
 
     public void emit(String event, byte[] data, Callback cb) throws IOException {
@@ -231,6 +252,20 @@ public class Socket {
                 return null;
             }
         });
+    }
+
+    private void emitTo(String event, byte[] data, byte dt, EmitOpts emitOpts) throws IOException {
+        if (emitOpts.broadcast) {
+            send(event, data, Serializer.MT_DATA_BROADCAST, dt);
+        }
+
+        if (emitOpts.socketIds != null && emitOpts.socketIds.size() > 0) {
+            send(Utils.join(emitOpts.socketIds, ",") + ":" + event, data, Serializer.MT_DATA_TO_SOCKET, dt);
+        }
+
+        if (emitOpts.rooms != null && emitOpts.rooms.size() > 0) {
+            send(Utils.join(emitOpts.rooms, ",") + ":" + event, data, Serializer.MT_DATA_TO_ROOM, dt);
+        }
     }
 
     private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
@@ -331,6 +366,27 @@ public class Socket {
 
     public interface Callback {
         void call(Object data);
+    }
+
+    public static class EmitOpts {
+        private List<String> socketIds;
+        private List<String> rooms;
+        private boolean broadcast;
+
+        public EmitOpts socketIds(List<String> socketIds) {
+            this.socketIds = socketIds;
+            return this;
+        }
+
+        public EmitOpts rooms(List<String> rooms) {
+            this.rooms = rooms;
+            return this;
+        }
+
+        public EmitOpts broadcast(boolean broadcast) {
+            this.broadcast = broadcast;
+            return this;
+        }
     }
 
     public static class Opts {

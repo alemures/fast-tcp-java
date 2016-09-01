@@ -4,6 +4,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Main {
     public static void main(String[] args) throws IOException {
@@ -28,6 +30,10 @@ public class Main {
         });
 
         socket.emit("array", new JSONArray().put(1).put(2).put(3));
+
+        socket.emit("tosockets", "Hello Sockets!", new Socket.EmitOpts().socketIds(Arrays.asList("socket1","socket2", "socket3")));
+        socket.emit("torooms", "Hello Rooms!", new Socket.EmitOpts().rooms(Arrays.asList("room1","room2", "room3")));
+        socket.emit("broadcast", "Hello All!", new Socket.EmitOpts().broadcast(true));
 
         socket.on(Socket.EVENT_END, (args) -> System.out.println("fast-tcp end"));
         socket.on(Socket.EVENT_ERROR, (args) -> System.out.println("fast-tcp error " + args[0]));
