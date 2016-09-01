@@ -2,43 +2,42 @@ package com.github.alemures.fasttcp;
 
 import com.github.alemures.fasttcp.futures.FutureCallback;
 import com.github.alemures.fasttcp.futures.FutureExecutor;
+import com.github.alemures.fasttcp.futures.ListenableFuture;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.net.InetSocketAddress;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Socket {
-    private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;
+    public static final String EVENT_CONNECT = "connect";
+    public static final String EVENT_SOCKET_CONNECT = "socket_connect";
+    public static final String EVENT_END = "end";
+    public static final String EVENT_CLOSE = "close";
+    public static final String EVENT_ERROR = "error";
+    public static final String EVENT_RECONNECTING = "reconnecting";
 
+    private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;
+    public String id;
     private String host;
     private int port;
     private Opts opts;
-
-    private ExecutorService executorService;
-    private FutureExecutor futureExecutor;
-
     private java.net.Socket socket;
     private boolean connected;
     private boolean manuallyClosed;
     private int messageId = 1;
     private BufferedInputStream bufferedInputStream;
     private BufferedOutputStream bufferedOutputStream;
-
-    private EventListener eventListener;
-
+    private Emitter emitter = new Emitter();
+    private EventThread eventThread = new EventThread();
     private LinkedList<byte[]> queue;
     private Map<Integer, Callback> acks = new HashMap<>();
-
-    public String id;
 
     public Socket(String host, int port) {
         this(host, port, new Opts());
@@ -49,58 +48,51 @@ public class Socket {
         this.port = port;
         this.opts = opts;
 
-        if (opts.autoConnect) {
-            connect();
-        }
-
         if (opts.useQueue) {
             queue = new LinkedList<>();
         }
     }
 
     public void connect() {
-        if (!connected) {
-            manuallyClosed = false;
-            executorService = Executors.newSingleThreadExecutor();
-            futureExecutor = new FutureExecutor(executorService);
-            futureExecutor.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    socket = new java.net.Socket(host, port);
-                    bufferedInputStream = new BufferedInputStream(socket.getInputStream());
-                    bufferedOutputStream = new BufferedOutputStream(socket.getOutputStream());
-                    new SocketReceiverThread().start();
-                    return null;
-                }
-            }).addCallback(new FutureCallback<Void>() {
-                @Override
-                public void onSuccess(Void result) {
-                    connected = true;
+        if (connected) return;
 
-                    try {
-                        flushQueue();
-                    } catch (Exception e) {
-                        eventListener.onError(e);
-                    }
+        manuallyClosed = false;
+        eventThread.run(new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                socket = new java.net.Socket();
+                socket.connect(new InetSocketAddress(host, port), opts.timeout);
+                bufferedInputStream = new BufferedInputStream(socket.getInputStream());
+                bufferedOutputStream = new BufferedOutputStream(socket.getOutputStream());
+                new SocketReceiverThread().start();
+                return null;
+            }
+        }).addCallback(new FutureCallback<Void>() {
+            @Override
+            public void onSuccess(Void result) {
+                connected = true;
 
-                    if (eventListener != null) {
-                        eventListener.onSocketConnect();
-                    }
+                try {
+                    flushQueue();
+                } catch (Exception e) {
+                    emitter.emit(EVENT_ERROR, e);
                 }
 
-                @Override
-                public void onFailure(Throwable failure) {
-                    if (eventListener != null) {
-                        eventListener.onError(failure);
-                        eventListener.onClose();
-                    }
+                emitter.emit(EVENT_SOCKET_CONNECT);
+            }
 
-                    if (opts.reconnect && !manuallyClosed) {
-                        reconnect();
-                    }
+            @Override
+            public void onFailure(Throwable failure) {
+                emitter.emit(EVENT_ERROR, failure);
+                emitter.emit(EVENT_CLOSE);
+
+                if (opts.reconnect && !manuallyClosed) {
+                    reconnect();
+                } else {
+                    eventThread.stop();
                 }
-            });
-        }
+            }
+        });
     }
 
     public void end() {
@@ -108,35 +100,37 @@ public class Socket {
     }
 
     public void destroy() {
-        if (connected) {
-            manuallyClosed = true;
-            futureExecutor.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    socket.close();
-                    return null;
-                }
-            }).addCallback(new FutureCallback<Void>() {
-                @Override
-                public void onSuccess(Void result) {
-                    if (eventListener != null) {
-                        eventListener.onEnd();
-                        eventListener.onClose();
-                    }
+        if (!connected) return;
 
-                    executorService.shutdown();
-                }
+        manuallyClosed = true;
+        eventThread.run(new Callable<Void>() {
+            @Override
+            public Void call() throws Exception {
+                socket.close();
+                return null;
+            }
+        }).addCallback(new FutureCallback<Void>() {
+            @Override
+            public void onSuccess(Void result) {
+                emitter.emit(EVENT_END);
+                emitter.emit(EVENT_CLOSE);
 
-                @Override
-                public void onFailure(Throwable failure) {
-                    eventListener.onError(failure);
-                }
-            });
-        }
+                eventThread.stop();
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {
+                emitter.emit(EVENT_ERROR, failure);
+            }
+        });
     }
 
     public void emit(String event, String data) throws IOException {
         send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
+    }
+
+    public void emit(String event, String data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.getBytes(), Serializer.DT_STRING, emitOpts);
     }
 
     public void emit(String event, String data, Callback cb) throws IOException {
@@ -147,12 +141,20 @@ public class Socket {
         send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INT);
     }
 
+    public void emit(String event, long data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.int48ToByteArray(data), Serializer.DT_INT, emitOpts);
+    }
+
     public void emit(String event, long data, Callback cb) throws IOException {
         send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_INT, cb);
     }
 
     public void emit(String event, double data) throws IOException {
         send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DOUBLE);
+    }
+
+    public void emit(String event, double data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.doubleToByteArray(data), Serializer.DT_DOUBLE, emitOpts);
     }
 
     public void emit(String event, double data, Callback cb) throws IOException {
@@ -163,6 +165,10 @@ public class Socket {
         send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
     }
 
+    public void emit(String event, JSONObject data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
+    }
+
     public void emit(String event, JSONObject data, Callback cb) throws IOException {
         send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
     }
@@ -171,12 +177,20 @@ public class Socket {
         send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
     }
 
+    public void emit(String event, JSONArray data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
+    }
+
     public void emit(String event, JSONArray data, Callback cb) throws IOException {
         send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
     }
 
     public void emit(String event, byte[] data) throws IOException {
         send(event, data, Serializer.MT_DATA, Serializer.DT_BUFFER);
+    }
+
+    public void emit(String event, byte[] data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, data, Serializer.DT_BUFFER, emitOpts);
     }
 
     public void emit(String event, byte[] data, Callback cb) throws IOException {
@@ -199,8 +213,20 @@ public class Socket {
         return Serializer.VERSION;
     }
 
-    public void setEventListener(EventListener listener) {
-        this.eventListener = listener;
+    public void on(String event, Emitter.Listener fn) {
+        emitter.on(event, fn);
+    }
+
+    public void once(String event, Emitter.Listener fn) {
+        emitter.once(event, fn);
+    }
+
+    public void removeListener(String event, Emitter.Listener fn) {
+        emitter.removeListener(event, fn);
+    }
+
+    public void removeAllListeners(String event) {
+        emitter.removeAllListeners(event);
     }
 
     private void flushQueue() throws IOException {
@@ -217,17 +243,29 @@ public class Socket {
     }
 
     private void reconnect() {
-        futureExecutor.submit(new Callable<Void>() {
+        eventThread.run(new Callable<Void>() {
             @Override
             public Void call() throws Exception {
                 Thread.sleep(opts.reconnectInterval);
-                if (eventListener != null) {
-                    eventListener.onReconnecting();
-                }
+                emitter.emit(EVENT_RECONNECTING);
                 connect();
                 return null;
             }
         });
+    }
+
+    private void emitTo(String event, byte[] data, byte dt, EmitOpts emitOpts) throws IOException {
+        if (emitOpts.broadcast) {
+            send(event, data, Serializer.MT_DATA_BROADCAST, dt);
+        }
+
+        if (emitOpts.socketIds != null && emitOpts.socketIds.size() > 0) {
+            send(Utils.join(emitOpts.socketIds, ",") + ":" + event, data, Serializer.MT_DATA_TO_SOCKET, dt);
+        }
+
+        if (emitOpts.rooms != null && emitOpts.rooms.size() > 0) {
+            send(Utils.join(emitOpts.rooms, ",") + ":" + event, data, Serializer.MT_DATA_TO_ROOM, dt);
+        }
     }
 
     private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
@@ -270,7 +308,7 @@ public class Socket {
         return messageId;
     }
 
-    private Ack createAck(final Message message) {
+    private Ack createAck(Message message) {
         return new Ack() {
             @Override
             public void send(String data) {
@@ -293,6 +331,11 @@ public class Socket {
             }
 
             @Override
+            public void send(JSONArray data) {
+                send(data.toString().getBytes(), Serializer.DT_OBJECT);
+            }
+
+            @Override
             public void send(byte[] data) {
                 send(data, Serializer.DT_BUFFER);
             }
@@ -301,12 +344,100 @@ public class Socket {
                 try {
                     Socket.this.send("", data, Serializer.MT_ACK, dt, message.messageId);
                 } catch (IOException e) {
-                    if (eventListener != null) {
-                        eventListener.onError(e);
-                    }
+                    emitter.emit(EVENT_ERROR, e);
                 }
             }
         };
+    }
+
+    public interface Ack {
+        void send(String data);
+
+        void send(long data);
+
+        void send(double data);
+
+        void send(JSONObject data);
+
+        void send(JSONArray data);
+
+        void send(byte[] data);
+    }
+
+    public interface Callback {
+        void call(Object data);
+    }
+
+    public static class EmitOpts {
+        private List<String> socketIds;
+        private List<String> rooms;
+        private boolean broadcast;
+
+        public EmitOpts socketIds(List<String> socketIds) {
+            this.socketIds = socketIds;
+            return this;
+        }
+
+        public EmitOpts rooms(List<String> rooms) {
+            this.rooms = rooms;
+            return this;
+        }
+
+        public EmitOpts broadcast(boolean broadcast) {
+            this.broadcast = broadcast;
+            return this;
+        }
+    }
+
+    public static class Opts {
+        private boolean reconnect = true;
+        private long reconnectInterval = 1000;
+        private boolean useQueue = true;
+        private int queueSize = 1024;
+        private int timeout = 0; // Disabled by default
+
+        public Opts reconnect(boolean reconnect) {
+            this.reconnect = reconnect;
+            return this;
+        }
+
+        public Opts reconnectInterval(long reconnectInterval) {
+            this.reconnectInterval = reconnectInterval;
+            return this;
+        }
+
+        public Opts useQueue(boolean useQueue) {
+            this.useQueue = useQueue;
+            return this;
+        }
+
+        public Opts queueSize(int queueSize) {
+            this.queueSize = queueSize;
+            return this;
+        }
+
+        public Opts timeout(int timeout) {
+            this.timeout = timeout;
+            return this;
+        }
+    }
+
+    private class EventThread {
+        private ExecutorService executorService;
+        private FutureExecutor futureExecutor;
+
+        private ListenableFuture<Void> run(Callable<Void> callable) {
+            if (executorService == null || executorService.isShutdown()) {
+                executorService = Executors.newSingleThreadExecutor();
+                futureExecutor = new FutureExecutor(executorService);
+            }
+
+            return futureExecutor.submit(callable);
+        }
+
+        private void stop() {
+            executorService.shutdown();
+        }
     }
 
     private class SocketReceiverThread extends Thread {
@@ -325,19 +456,17 @@ public class Socket {
                 }
 
             } catch (IOException e) {
-                if (eventListener != null) {
-                    eventListener.onError(e);
-                }
+                emitter.emit(EVENT_ERROR, e);
             }
 
             if (opts.reconnect && !manuallyClosed) {
                 reconnect();
+            } else {
+                eventThread.stop();
             }
 
-            if (eventListener != null) {
-                eventListener.onEnd();
-                eventListener.onClose();
-            }
+            emitter.emit(EVENT_END);
+            emitter.emit(EVENT_CLOSE);
 
             connected = false;
         }
@@ -345,14 +474,10 @@ public class Socket {
         private void process(final Message message) {
             switch (message.mt) {
                 case Serializer.MT_DATA:
-                    if (eventListener != null) {
-                        eventListener.onMessage(message.event, message.data);
-                    }
+                    emitter.emit(message.event, message.data);
                     break;
                 case Serializer.MT_DATA_WITH_ACK:
-                    if (eventListener != null) {
-                        eventListener.onMessage(message.event, message.data, createAck(message));
-                    }
+                    emitter.emit(message.event, message.data, createAck(message));
                     break;
                 case Serializer.MT_ACK:
                     if (acks.containsKey(message.messageId)) {
@@ -362,84 +487,11 @@ public class Socket {
                     break;
                 case Serializer.MT_REGISTER:
                     id = (String) message.data;
-                    if (eventListener != null) {
-                        eventListener.onConnect();
-                    }
+                    emitter.emit(EVENT_CONNECT);
                     break;
                 default:
                     throw new RuntimeException("Not implemented message type " + message.mt);
             }
-        }
-    }
-
-    public static class EventListener {
-        public void onSocketConnect() {
-        }
-
-        public void onEnd() {
-        }
-
-        public void onClose() {
-        }
-
-        public void onError(Throwable err) {
-        }
-
-        public void onConnect() {
-        }
-
-        public void onReconnecting() {
-        }
-
-        public void onMessage(String event, Object data) {
-        }
-
-        public void onMessage(String event, Object data, Ack ack) {
-        }
-    }
-
-    public interface Ack {
-        void send(String data);
-        void send(long data);
-        void send(double data);
-        void send(JSONObject data);
-        void send(byte[] data);
-    }
-
-    public interface Callback {
-        void call(Object data);
-    }
-
-    public static class Opts {
-        private boolean reconnect = true;
-        private long reconnectInterval = 1000;
-        private boolean autoConnect = true;
-        private boolean useQueue = true;
-        private int queueSize = 1024;
-
-        public Opts reconnect(boolean reconnect) {
-            this.reconnect = reconnect;
-            return this;
-        }
-
-        public Opts reconnectInterval(long reconnectInterval) {
-            this.reconnectInterval = reconnectInterval;
-            return this;
-        }
-
-        public Opts autoConnect(boolean autoConnect) {
-            this.autoConnect = autoConnect;
-            return this;
-        }
-
-        public Opts useQueue(boolean useQueue) {
-            this.useQueue = useQueue;
-            return this;
-        }
-
-        public Opts queueSize(int queueSize) {
-            this.queueSize = queueSize;
-            return this;
         }
     }
 }

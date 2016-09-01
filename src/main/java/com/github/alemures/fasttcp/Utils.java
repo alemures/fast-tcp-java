@@ -1,5 +1,7 @@
 package com.github.alemures.fasttcp;
 
+import java.util.List;
+
 class Utils {
     private static final byte CHAR_CODE_OPEN_BRACKET = 91;
     private static final byte CHAR_CODE_OPEN_BRACE = 123;
@@ -102,6 +104,15 @@ class Utils {
             sb.append(" ");
         }
         sb.append("]");
+        return sb.toString();
+    }
+
+    static String join(List<String> list, String delimiter) {
+        StringBuilder sb = new StringBuilder();
+        int size = list.size();
+        for (int i = 0; i < size; i++) {
+            sb.append(list.get(i)).append(i < size - 1 ? delimiter : "");
+        }
         return sb.toString();
     }
 }

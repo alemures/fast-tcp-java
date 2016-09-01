@@ -18,9 +18,9 @@ class Serializer {
 
     static final byte MT_REGISTER = 1;
     static final byte MT_DATA = 2;
-//    static final byte MT_DATA_TO_SOCKET = 3;
-//    static final byte MT_DATA_TO_ROOM = 4;
-//    static final byte MT_DATA_BROADCAST = 5;
+    static final byte MT_DATA_TO_SOCKET = 3;
+    static final byte MT_DATA_TO_ROOM = 4;
+    static final byte MT_DATA_BROADCAST = 5;
     static final byte MT_DATA_WITH_ACK = 6;
     static final byte MT_ACK = 7;
     static final byte MT_JOIN_ROOM = 8;

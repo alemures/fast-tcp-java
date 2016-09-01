@@ -22,61 +22,48 @@ public class Main {
         socket.emit("buffer", new byte[]{1, 2, 3, 4});
         socket.emit("object", new JSONObject("{\"key\":\"value\"}"));
 
-        socket.emit("sum-with-cb", new JSONObject().put("n1", 5).put("n2", 13), (data) -> System.out.println("Result: " + data));
+        socket.emit("sum-with-cb", new JSONObject().put("n1", 5).put("n2", 13), new Socket.Callback() {
+            @Override
+            public void call(Object data) {
+                System.out.println("Result: " + data);
+            }
+        });
 
         socket.emit("array", new JSONArray().put(1).put(2).put(3));
 
-        socket.setEventListener(new Socket.EventListener() {
-            @Override
-            public void onEnd() {
-                System.out.println("fast-tcp onEnd");
-            }
+        socket.emit("tosockets", "Hello Sockets!", new Socket.EmitOpts().socketIds(Arrays.asList("socket1","socket2", "socket3")));
+        socket.emit("torooms", "Hello Rooms!", new Socket.EmitOpts().rooms(Arrays.asList("room1","room2", "room3")));
+        socket.emit("broadcast", "Hello All!", new Socket.EmitOpts().broadcast(true));
 
-            @Override
-            public void onError(Throwable err) {
-                System.out.println("fast-tcp onError: " + err.getMessage());
-            }
+        socket.on(Socket.EVENT_END, (args) -> System.out.println("fast-tcp end"));
+        socket.on(Socket.EVENT_ERROR, (args) -> System.out.println("fast-tcp error " + args[0]));
+        socket.on(Socket.EVENT_CLOSE, (args) -> System.out.println("fast-tcp close"));
+        socket.on(Socket.EVENT_SOCKET_CONNECT, (args) -> System.out.println("fast-tcp socket_connected"));
+        socket.on(Socket.EVENT_CONNECT, (args) -> System.out.println("fast-tcp connect"));
+        socket.on(Socket.EVENT_RECONNECTING, (args) -> System.out.println("fast-tcp reconnecting"));
 
-            @Override
-            public void onClose() {
-                System.out.println("fast-tcp onClose");
-            }
+        socket.on("string", (args) -> System.out.println(args[0]));
+        socket.on("double", (args) -> System.out.println(args[0]));
+        socket.on("int", (args) -> System.out.println(args[0]));
+        socket.on("buffer", (args) -> System.out.println(Utils.byteArrayToLiteralString((byte[]) args[0])));
+        socket.on("object", (args) -> System.out.println(args[0]));
+        socket.on("array", (args) -> System.out.println(args[0]));
 
+        socket.on("div", new Emitter.Listener() {
             @Override
-            public void onSocketConnect() {
-                System.out.println("fast-tcp onSocketConnected");
-            }
+            public void call(Object... args) {
+                JSONObject numbers = (JSONObject) args[0];
+                Socket.Ack ack = (Socket.Ack) args[args.length - 1];
 
-            @Override
-            public void onConnect() {
-                System.out.println("fast-tcp onConnect");
-            }
-
-            @Override
-            public void onReconnecting() {
-                System.out.println("fast-tcp onReconnecting");
-            }
-
-            @Override
-            public void onMessage(String event, Object data) {
-                System.out.println("fast-tcp onMessage: " + event + " -> " + data);
-            }
-
-            @Override
-            public void onMessage(String event, Object data, Socket.Ack ack) {
-                if (event.equals("div")) {
-                    JSONObject o = (JSONObject) data;
-                    ack.send(o.getDouble("a") / o.getDouble("b"));
-                    return;
-                }
-                System.out.println("fast-tcp onMessage with ack: "  + event + " -> " + data);
-                ack.send(1234);
+                ack.send(new JSONArray().put(numbers.getDouble("a") / numbers.getDouble("b")));
             }
         });
+
+        socket.connect();
     }
 
     public static void socketPerformance() throws IOException {
-        Socket socket = new Socket("localhost", 5000, new Socket.Opts().autoConnect(false));
+        Socket socket = new Socket("localhost", 5000);
         String temp = "";
 
         for (int i = 0; i < 10000; i++) {
@@ -85,16 +72,13 @@ public class Main {
 
         final String data = temp;
 
-        socket.setEventListener(new Socket.EventListener() {
-            @Override
-            public void onConnect() {
-                try {
-                    for(int i = 0; i < 100000; i++) {
-                        socket.emit("data", data);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
+        socket.on(Socket.EVENT_CONNECT, (args) -> {
+            try {
+                for (int i = 0; i < 100000; i++) {
+                    socket.emit("data", data);
                 }
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         });
 
