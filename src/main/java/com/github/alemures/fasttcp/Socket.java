@@ -308,7 +308,7 @@ public class Socket {
         return messageId;
     }
 
-    private Ack createAck(Message message) {
+    private Ack createAck(final Message message) {
         return new Ack() {
             @Override
             public void send(String data) {
