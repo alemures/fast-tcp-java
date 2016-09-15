@@ -2,8 +2,11 @@ package com.github.alemures.fasttcp;
 
 import java.util.*;
 
-class Emitter {
+public class Emitter {
     private Map<String, LinkedList<Listener>> callbacks = new HashMap<>();
+
+    Emitter() {
+    }
 
     private static boolean sameAs(Listener fn, Listener internal) {
         if (fn.equals(internal)) {
@@ -19,10 +22,6 @@ class Emitter {
         LinkedList<Listener> callbacks = this.callbacks.get(event);
         if (callbacks == null) {
             callbacks = new LinkedList<>();
-            LinkedList<Listener> tempCallbacks = this.callbacks.putIfAbsent(event, callbacks);
-            if (tempCallbacks != null) {
-                callbacks = tempCallbacks;
-            }
         }
         callbacks.add(fn);
         return this;
@@ -66,7 +65,7 @@ class Emitter {
     List<Listener> listeners(String event) {
         LinkedList<Listener> callbacks = this.callbacks.get(event);
         return callbacks != null ?
-                new ArrayList<>(callbacks) : new ArrayList<>(0);
+                new ArrayList<Listener>(callbacks) : new ArrayList<Listener>(0);
     }
 
     boolean hasListeners(String event) {
@@ -74,7 +73,7 @@ class Emitter {
         return callbacks != null && !callbacks.isEmpty();
     }
 
-    interface Listener {
+    public interface Listener {
         void call(Object... args);
     }
 

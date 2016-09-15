@@ -1,7 +1,10 @@
 apply plugin: 'java'
 
 group = 'com.github.alemures.fasttcp'
-version = '1.0.0'
+version = '1.0.1'
+
+targetCompatibility='1.7'
+sourceCompatibility='1.7'
 
 jar {
     baseName = project.name
