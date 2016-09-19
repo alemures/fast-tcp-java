@@ -95,11 +95,7 @@ public class Socket {
         });
     }
 
-    public void end() {
-        destroy();
-    }
-
-    public void destroy() {
+    public void close() {
         if (!connected) return;
 
         manuallyClosed = true;
