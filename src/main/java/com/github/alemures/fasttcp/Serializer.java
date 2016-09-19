@@ -10,11 +10,11 @@ import java.util.Arrays;
 class Serializer {
     static final byte VERSION = 1;
 
-    static final byte DT_STRING = 1;
-    static final byte DT_BUFFER = 2;
-    static final byte DT_INT = 3;
-    static final byte DT_DOUBLE = 4;
-    static final byte DT_OBJECT = 5;
+    static final byte DT_TEXT = 1;
+    static final byte DT_BINARY = 2;
+    static final byte DT_INTEGER = 3;
+    static final byte DT_DECIMAL = 4;
+    static final byte DT_JSON = 5;
 
     static final byte MT_REGISTER = 1;
     static final byte MT_DATA = 2;
@@ -60,7 +60,7 @@ class Serializer {
         return buffer;
     }
 
-    static Message deserialize(byte[] buffer) throws UnsupportedEncodingException {
+    static Message deserialize(byte[] buffer, Message message) throws UnsupportedEncodingException {
         int offset = 4;
 
         byte version = buffer[offset++];
@@ -87,28 +87,40 @@ class Serializer {
         offset += 4;
 
         switch (dt) {
-            case DT_STRING:
-                byte[] dataBytes = Arrays.copyOfRange(buffer, offset, offset + dataLength);
-                return new Message(event, new String(dataBytes, "UTF-8"), messageId, mt, dt);
-            case DT_BUFFER:
-                byte[] dataBytes2 = Arrays.copyOfRange(buffer, offset, offset + dataLength);
-                return new Message(event, dataBytes2, messageId, mt, dt);
-            case DT_OBJECT:
-                byte[] dataBytes3 = Arrays.copyOfRange(buffer, offset, offset + dataLength);
-
-                if (Utils.isJsonObject(dataBytes3)) {
-                    return new Message(event, new JSONObject(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
-                } else if (Utils.isJsonArray(dataBytes3)) {
-                    return new Message(event, new JSONArray(new String(dataBytes3, "UTF-8")), messageId, mt, dt);
+            case DT_TEXT:
+                return message.setAndGet(event, deserializeDataAsString(buffer, offset, dataLength), messageId, mt, dt);
+            case DT_BINARY:
+                return message.setAndGet(event, deserializeDataAsBinary(buffer, offset, dataLength), messageId, mt, dt);
+            case DT_JSON:
+                if (Utils.isJsonObject(buffer, offset)) {
+                    return message.setAndGet(event, deserializeDataAsJsonObject(buffer, offset, dataLength), messageId, mt, dt);
+                } else if (Utils.isJsonArray(buffer, offset)) {
+                    return message.setAndGet(event, deserializeDataAsJsonArray(buffer, offset, dataLength), messageId, mt, dt);
                 } else {
                     throw new RuntimeErrorException(new Error("Invalid object"));
                 }
-            case DT_INT:
-                return new Message(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
-            case DT_DOUBLE:
-                return new Message(event, Utils.readDouble(buffer, offset), messageId, mt, dt);
+            case DT_INTEGER:
+                return message.setAndGet(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
+            case DT_DECIMAL:
+                return message.setAndGet(event, Utils.readDouble(buffer, offset), messageId, mt, dt);
             default:
                 throw new RuntimeErrorException(new Error("Invalid data type: " + dt));
         }
+    }
+
+    private static byte[] deserializeDataAsBinary(byte[] buffer, int offset, int dataLength) {
+        return Arrays.copyOfRange(buffer, offset, offset + dataLength);
+    }
+
+    private static String deserializeDataAsString(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
+        return new String(deserializeDataAsBinary(buffer, offset, dataLength), "UTF-8");
+    }
+
+    private static JSONObject deserializeDataAsJsonObject(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
+        return new JSONObject(deserializeDataAsString(buffer, offset, dataLength));
+    }
+
+    private static JSONArray deserializeDataAsJsonArray(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
+        return new JSONArray(deserializeDataAsString(buffer, offset, dataLength));
     }
 }

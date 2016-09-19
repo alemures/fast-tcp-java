@@ -63,7 +63,7 @@ class Reader {
 
     private void createBuffer() {
         buffer = new byte[4 + messageLength];
-        Utils.writeInt48(messageLength, buffer, offset);
+        Utils.writeInt(messageLength, buffer, offset);
         offset += 4;
     }
 }

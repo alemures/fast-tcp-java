@@ -89,21 +89,20 @@ class Utils {
                 (buffer[offset + 1] & 0xFF) << 8);
     }
 
-    static boolean isJsonObject(byte[] buffer) {
-        return buffer[0] == CHAR_CODE_OPEN_BRACE;
+    static boolean isJsonObject(byte[] buffer, int offset) {
+        return buffer[offset] == CHAR_CODE_OPEN_BRACE;
     }
 
-    static boolean isJsonArray(byte[] buffer) {
-        return buffer[0] == CHAR_CODE_OPEN_BRACKET;
+    static boolean isJsonArray(byte[] buffer, int offset) {
+        return buffer[offset] == CHAR_CODE_OPEN_BRACKET;
     }
 
-    static String byteArrayToLiteralString(byte[] array) {
-        StringBuilder sb = new StringBuilder("[ ");
-        for (byte bytee : array) {
+    static String bytesToString(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte bytee : bytes) {
             sb.append(Integer.toString(bytee & 0xFF, 16));
             sb.append(" ");
         }
-        sb.append("]");
         return sb.toString();
     }
 

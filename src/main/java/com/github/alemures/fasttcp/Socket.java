@@ -18,7 +18,6 @@ import java.util.concurrent.Executors;
 public class Socket {
     public static final String EVENT_CONNECT = "connect";
     public static final String EVENT_SOCKET_CONNECT = "socket_connect";
-    public static final String EVENT_END = "end";
     public static final String EVENT_CLOSE = "close";
     public static final String EVENT_ERROR = "error";
     public static final String EVENT_RECONNECTING = "reconnecting";
@@ -37,7 +36,7 @@ public class Socket {
     private Emitter emitter = new Emitter();
     private EventThread eventThread = new EventThread();
     private LinkedList<byte[]> queue;
-    private Map<Integer, Callback> acks = new HashMap<>();
+    private Map<Integer, Emitter.Listener> acks = new HashMap<>();
 
     public Socket(String host, int port) {
         this(host, port, new Opts());
@@ -95,11 +94,7 @@ public class Socket {
         });
     }
 
-    public void end() {
-        destroy();
-    }
-
-    public void destroy() {
+    public void close() {
         if (!connected) return;
 
         manuallyClosed = true;
@@ -112,7 +107,6 @@ public class Socket {
         }).addCallback(new FutureCallback<Void>() {
             @Override
             public void onSuccess(Void result) {
-                emitter.emit(EVENT_END);
                 emitter.emit(EVENT_CLOSE);
 
                 eventThread.stop();
@@ -126,87 +120,87 @@ public class Socket {
     }
 
     public void emit(String event, String data) throws IOException {
-        send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
+        send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_TEXT);
     }
 
     public void emit(String event, String data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.getBytes(), Serializer.DT_STRING, emitOpts);
+        emitTo(event, data.getBytes(), Serializer.DT_TEXT, emitOpts);
     }
 
-    public void emit(String event, String data, Callback cb) throws IOException {
-        send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_STRING, cb);
+    public void emit(String event, String data, Emitter.Listener cb) throws IOException {
+        send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_TEXT, cb);
     }
 
     public void emit(String event, long data) throws IOException {
-        send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INT);
+        send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA, Serializer.DT_INTEGER);
     }
 
     public void emit(String event, long data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, Utils.int48ToByteArray(data), Serializer.DT_INT, emitOpts);
+        emitTo(event, Utils.int48ToByteArray(data), Serializer.DT_INTEGER, emitOpts);
     }
 
-    public void emit(String event, long data, Callback cb) throws IOException {
-        send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_INT, cb);
+    public void emit(String event, long data, Emitter.Listener cb) throws IOException {
+        send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_INTEGER, cb);
     }
 
     public void emit(String event, double data) throws IOException {
-        send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DOUBLE);
+        send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA, Serializer.DT_DECIMAL);
     }
 
     public void emit(String event, double data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, Utils.doubleToByteArray(data), Serializer.DT_DOUBLE, emitOpts);
+        emitTo(event, Utils.doubleToByteArray(data), Serializer.DT_DECIMAL, emitOpts);
     }
 
-    public void emit(String event, double data, Callback cb) throws IOException {
-        send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_DOUBLE, cb);
+    public void emit(String event, double data, Emitter.Listener cb) throws IOException {
+        send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_DECIMAL, cb);
     }
 
     public void emit(String event, JSONObject data) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
+        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_JSON);
     }
 
     public void emit(String event, JSONObject data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
+        emitTo(event, data.toString().getBytes(), Serializer.DT_JSON, emitOpts);
     }
 
-    public void emit(String event, JSONObject data, Callback cb) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
+    public void emit(String event, JSONObject data, Emitter.Listener cb) throws IOException {
+        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_JSON, cb);
     }
 
     public void emit(String event, JSONArray data) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_OBJECT);
+        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_JSON);
     }
 
     public void emit(String event, JSONArray data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.toString().getBytes(), Serializer.DT_OBJECT, emitOpts);
+        emitTo(event, data.toString().getBytes(), Serializer.DT_JSON, emitOpts);
     }
 
-    public void emit(String event, JSONArray data, Callback cb) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
+    public void emit(String event, JSONArray data, Emitter.Listener cb) throws IOException {
+        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_JSON, cb);
     }
 
     public void emit(String event, byte[] data) throws IOException {
-        send(event, data, Serializer.MT_DATA, Serializer.DT_BUFFER);
+        send(event, data, Serializer.MT_DATA, Serializer.DT_BINARY);
     }
 
     public void emit(String event, byte[] data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data, Serializer.DT_BUFFER, emitOpts);
+        emitTo(event, data, Serializer.DT_BINARY, emitOpts);
     }
 
-    public void emit(String event, byte[] data, Callback cb) throws IOException {
-        send(event, data, Serializer.MT_DATA_WITH_ACK, Serializer.DT_BUFFER, cb);
+    public void emit(String event, byte[] data, Emitter.Listener cb) throws IOException {
+        send(event, data, Serializer.MT_DATA_WITH_ACK, Serializer.DT_BINARY, cb);
     }
 
     public void join(String room) throws IOException {
-        send("", room.getBytes(), Serializer.MT_JOIN_ROOM, Serializer.DT_STRING);
+        send("", room.getBytes(), Serializer.MT_JOIN_ROOM, Serializer.DT_TEXT);
     }
 
     public void leave(String room) throws IOException {
-        send("", room.getBytes(), Serializer.MT_LEAVE_ROOM, Serializer.DT_STRING);
+        send("", room.getBytes(), Serializer.MT_LEAVE_ROOM, Serializer.DT_TEXT);
     }
 
     public void leaveAll() throws IOException {
-        send("", new byte[0], Serializer.MT_LEAVE_ALL_ROOMS, Serializer.DT_STRING);
+        send("", new byte[0], Serializer.MT_LEAVE_ALL_ROOMS, Serializer.DT_TEXT);
     }
 
     public int getVersion() {
@@ -234,8 +228,8 @@ public class Socket {
             return;
         }
 
-        for (byte[] data : queue) {
-            bufferedOutputStream.write(data);
+        for (byte[] message : queue) {
+            bufferedOutputStream.write(message);
         }
         bufferedOutputStream.flush();
 
@@ -276,11 +270,11 @@ public class Socket {
         send(event, data, mt, dt, messageId, null);
     }
 
-    private void send(String event, byte[] data, byte mt, byte dt, Callback cb) throws IOException {
+    private void send(String event, byte[] data, byte mt, byte dt, Emitter.Listener cb) throws IOException {
         send(event, data, mt, dt, -1, cb);
     }
 
-    private void send(String event, byte[] data, byte mt, byte dt, int messageId, Callback cb) throws IOException {
+    private void send(String event, byte[] data, byte mt, byte dt, int messageId, Emitter.Listener cb) throws IOException {
         messageId = messageId > 0 ? messageId : nextMessageId();
 
         if (cb != null) {
@@ -312,32 +306,32 @@ public class Socket {
         return new Ack() {
             @Override
             public void send(String data) {
-                send(data.getBytes(), Serializer.DT_STRING);
+                send(data.getBytes(), Serializer.DT_TEXT);
             }
 
             @Override
             public void send(long data) {
-                send(Utils.int48ToByteArray(data), Serializer.DT_INT);
+                send(Utils.int48ToByteArray(data), Serializer.DT_INTEGER);
             }
 
             @Override
             public void send(double data) {
-                send(Utils.doubleToByteArray(data), Serializer.DT_DOUBLE);
+                send(Utils.doubleToByteArray(data), Serializer.DT_DECIMAL);
             }
 
             @Override
             public void send(JSONObject data) {
-                send(data.toString().getBytes(), Serializer.DT_OBJECT);
+                send(data.toString().getBytes(), Serializer.DT_JSON);
             }
 
             @Override
             public void send(JSONArray data) {
-                send(data.toString().getBytes(), Serializer.DT_OBJECT);
+                send(data.toString().getBytes(), Serializer.DT_JSON);
             }
 
             @Override
             public void send(byte[] data) {
-                send(data, Serializer.DT_BUFFER);
+                send(data, Serializer.DT_BINARY);
             }
 
             private void send(byte[] data, byte dt) {
@@ -362,10 +356,6 @@ public class Socket {
         void send(JSONArray data);
 
         void send(byte[] data);
-    }
-
-    public interface Callback {
-        void call(Object data);
     }
 
     public static class EmitOpts {
@@ -443,6 +433,7 @@ public class Socket {
     private class SocketReceiverThread extends Thread {
         private Reader reader = new Reader();
         private byte[] chunk = new byte[1024];
+        private final Message MESSAGE = new Message();
 
         @Override
         public void run() {
@@ -451,7 +442,7 @@ public class Socket {
                 while ((bytesRead = bufferedInputStream.read(chunk)) != -1) {
                     ArrayList<byte[]> buffers = reader.read(chunk, bytesRead);
                     for (byte[] buffer : buffers) {
-                        process(Serializer.deserialize(buffer));
+                        process(Serializer.deserialize(buffer, MESSAGE));
                     }
                 }
 
@@ -465,13 +456,12 @@ public class Socket {
                 eventThread.stop();
             }
 
-            emitter.emit(EVENT_END);
             emitter.emit(EVENT_CLOSE);
 
             connected = false;
         }
 
-        private void process(final Message message) {
+        private void process(Message message) {
             switch (message.mt) {
                 case Serializer.MT_DATA:
                     emitter.emit(message.event, message.data);

@@ -19,11 +19,12 @@ public class Emitter {
     }
 
     Emitter on(String event, Listener fn) {
-        LinkedList<Listener> callbacks = this.callbacks.get(event);
-        if (callbacks == null) {
-            callbacks = new LinkedList<>();
+        LinkedList<Listener> callbacksList = callbacks.get(event);
+        if (callbacksList == null) {
+            callbacksList = new LinkedList<>();
+            callbacks.put(event, callbacksList);
         }
-        callbacks.add(fn);
+        callbacksList.add(fn);
         return this;
     }
 
