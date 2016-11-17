@@ -90,14 +90,14 @@ class Serializer {
             case DT_TEXT:
                 return message.setAndGet(event, deserializeDataAsString(buffer, offset, dataLength), messageId, mt, dt);
             case DT_BINARY:
-                return message.setAndGet(event, deserializeDataAsBinary(buffer, offset, dataLength), messageId, mt, dt);
+                return message.setAndGet(event, deserializeDataAsByteArray(buffer, offset, dataLength), messageId, mt, dt);
             case DT_JSON:
                 if (Utils.isJsonObject(buffer, offset)) {
                     return message.setAndGet(event, deserializeDataAsJsonObject(buffer, offset, dataLength), messageId, mt, dt);
                 } else if (Utils.isJsonArray(buffer, offset)) {
                     return message.setAndGet(event, deserializeDataAsJsonArray(buffer, offset, dataLength), messageId, mt, dt);
                 } else {
-                    throw new RuntimeErrorException(new Error("Invalid object"));
+                    throw new RuntimeErrorException(new Error("Invalid json"));
                 }
             case DT_INTEGER:
                 return message.setAndGet(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
@@ -108,12 +108,12 @@ class Serializer {
         }
     }
 
-    private static byte[] deserializeDataAsBinary(byte[] buffer, int offset, int dataLength) {
+    private static byte[] deserializeDataAsByteArray(byte[] buffer, int offset, int dataLength) {
         return Arrays.copyOfRange(buffer, offset, offset + dataLength);
     }
 
     private static String deserializeDataAsString(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
-        return new String(deserializeDataAsBinary(buffer, offset, dataLength), "UTF-8");
+        return new String(deserializeDataAsByteArray(buffer, offset, dataLength), "UTF-8");
     }
 
     private static JSONObject deserializeDataAsJsonObject(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {

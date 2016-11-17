@@ -97,7 +97,7 @@ class Utils {
         return buffer[offset] == CHAR_CODE_OPEN_BRACKET;
     }
 
-    static String bytesToString(byte[] bytes) {
+    static String byteArrayToString(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte bytee : bytes) {
             sb.append(Integer.toString(bytee & 0xFF, 16));
