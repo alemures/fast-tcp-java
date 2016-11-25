@@ -15,6 +15,7 @@ class Serializer {
     static final byte DT_INTEGER = 3;
     static final byte DT_DECIMAL = 4;
     static final byte DT_JSON = 5;
+    static final byte DT_BOOLEAN = 6;
 
     static final byte MT_REGISTER = 1;
     static final byte MT_DATA = 2;
@@ -103,6 +104,8 @@ class Serializer {
                 return message.setAndGet(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
             case DT_DECIMAL:
                 return message.setAndGet(event, Utils.readDouble(buffer, offset), messageId, mt, dt);
+            case DT_BOOLEAN:
+                return message.setAndGet(event, Utils.readBoolean(buffer, offset), messageId, mt, dt);
             default:
                 throw new RuntimeErrorException(new Error("Invalid data type: " + dt));
         }

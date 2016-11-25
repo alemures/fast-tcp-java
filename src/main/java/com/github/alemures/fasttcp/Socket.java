@@ -179,6 +179,18 @@ public class Socket {
         send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_JSON, cb);
     }
 
+    public void emit(String event, boolean data) throws IOException {
+        send(event, Utils.booleanToByteArray(data), Serializer.MT_DATA, Serializer.DT_BOOLEAN);
+    }
+
+    public void emit(String event, boolean data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.booleanToByteArray(data), Serializer.DT_BOOLEAN, emitOpts);
+    }
+
+    public void emit(String event, boolean data, Emitter.Listener cb) throws IOException {
+        send(event, Utils.booleanToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_BOOLEAN, cb);
+    }
+
     public void emit(String event, byte[] data) throws IOException {
         send(event, data, Serializer.MT_DATA, Serializer.DT_BINARY);
     }
@@ -330,6 +342,11 @@ public class Socket {
             }
 
             @Override
+            public void send(boolean data) {
+                send(Utils.booleanToByteArray(data), Serializer.DT_BOOLEAN);
+            }
+
+            @Override
             public void send(byte[] data) {
                 send(data, Serializer.DT_BINARY);
             }
@@ -355,20 +372,22 @@ public class Socket {
 
         void send(JSONArray data);
 
+        void send(boolean data);
+
         void send(byte[] data);
     }
 
     public static class EmitOpts {
-        private List<String> socketIds;
-        private List<String> rooms;
+        private Set<String> socketIds;
+        private Set<String> rooms;
         private boolean broadcast;
 
-        public EmitOpts socketIds(List<String> socketIds) {
+        public EmitOpts socketIds(Set<String> socketIds) {
             this.socketIds = socketIds;
             return this;
         }
 
-        public EmitOpts rooms(List<String> rooms) {
+        public EmitOpts rooms(Set<String> rooms) {
             this.rooms = rooms;
             return this;
         }

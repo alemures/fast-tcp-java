@@ -1,6 +1,6 @@
 package com.github.alemures.fasttcp;
 
-import java.util.List;
+import java.util.Collection;
 
 class Utils {
     private static final byte CHAR_CODE_OPEN_BRACKET = 91;
@@ -30,6 +30,10 @@ class Utils {
 
     static byte[] doubleToByteArray(double value) {
         return longToByteArray(Double.doubleToRawLongBits(value));
+    }
+
+    static byte[] booleanToByteArray(boolean value) {
+        return new byte[]{(byte) (value ? 1 : 0)};
     }
 
     static void writeInt48(long value, byte[] buffer, int offset) {
@@ -89,6 +93,10 @@ class Utils {
                 (buffer[offset + 1] & 0xFF) << 8);
     }
 
+    static boolean readBoolean(byte[] buffer, int offset) {
+        return buffer[offset] == 1;
+    }
+
     static boolean isJsonObject(byte[] buffer, int offset) {
         return buffer[offset] == CHAR_CODE_OPEN_BRACE;
     }
@@ -106,12 +114,11 @@ class Utils {
         return sb.toString();
     }
 
-    static String join(List<String> list, String delimiter) {
+    static String join(Collection<String> collection, String delimiter) {
         StringBuilder sb = new StringBuilder();
-        int size = list.size();
-        for (int i = 0; i < size; i++) {
-            sb.append(list.get(i)).append(i < size - 1 ? delimiter : "");
+        for (String item : collection) {
+            sb.append(item).append(delimiter);
         }
-        return sb.toString();
+        return sb.substring(0, sb.length() > 0 ? sb.length() - 1 : 0);
     }
 }
