@@ -266,11 +266,11 @@ public class Socket {
         }
 
         if (emitOpts.socketIds != null && emitOpts.socketIds.size() > 0) {
-            send(Utils.join(emitOpts.socketIds, ",") + ":" + event, data, Serializer.MT_DATA_TO_SOCKET, dt);
+            send(Utils.join(emitOpts.socketIds, ",") + "|" + event, data, Serializer.MT_DATA_TO_SOCKET, dt);
         }
 
         if (emitOpts.rooms != null && emitOpts.rooms.size() > 0) {
-            send(Utils.join(emitOpts.rooms, ",") + ":" + event, data, Serializer.MT_DATA_TO_ROOM, dt);
+            send(Utils.join(emitOpts.rooms, ",") + "|" + event, data, Serializer.MT_DATA_TO_ROOM, dt);
         }
     }
 
