@@ -3,12 +3,11 @@ package com.github.alemures.fasttcp;
 import com.github.alemures.fasttcp.futures.FutureCallback;
 import com.github.alemures.fasttcp.futures.FutureExecutor;
 import com.github.alemures.fasttcp.futures.ListenableFuture;
-import org.json.JSONArray;
-import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -16,13 +15,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Socket {
-    public static final String EVENT_CONNECT = "connect";
-    public static final String EVENT_SOCKET_CONNECT = "socket_connect";
-    public static final String EVENT_CLOSE = "close";
-    public static final String EVENT_ERROR = "error";
-    public static final String EVENT_RECONNECTING = "reconnecting";
-
     private static final int MAX_MESSAGE_ID = Integer.MAX_VALUE;
+
     public String id;
     private String host;
     private int port;
@@ -33,10 +27,16 @@ public class Socket {
     private int messageId = 1;
     private BufferedInputStream bufferedInputStream;
     private BufferedOutputStream bufferedOutputStream;
-    private Emitter emitter = new Emitter();
     private EventThread eventThread = new EventThread();
     private LinkedList<byte[]> queue;
-    private Map<Integer, Emitter.Listener> acks = new HashMap<>();
+    private EventListener eventListener = new EventAdapter() {
+        @Override
+        public void onError(Throwable throwable) {
+            System.err.println("Missing error handler on `Socket`.");
+            System.err.println(throwable.getMessage());
+        }
+    };
+    private Map<Integer, EventListener> acks = new HashMap<>();
 
     public Socket(String host, int port) {
         this(host, port, new Opts());
@@ -74,16 +74,16 @@ public class Socket {
                 try {
                     flushQueue();
                 } catch (Exception e) {
-                    emitter.emit(EVENT_ERROR, e);
+                    eventListener.onError(e);
                 }
 
-                emitter.emit(EVENT_SOCKET_CONNECT);
+                eventListener.onSocketConnect();
             }
 
             @Override
             public void onFailure(Throwable failure) {
-                emitter.emit(EVENT_ERROR, failure);
-                emitter.emit(EVENT_CLOSE);
+                eventListener.onError(failure);
+                eventListener.onClose();
 
                 if (opts.reconnect && !manuallyClosed) {
                     reconnect();
@@ -107,28 +107,39 @@ public class Socket {
         }).addCallback(new FutureCallback<Void>() {
             @Override
             public void onSuccess(Void result) {
-                emitter.emit(EVENT_CLOSE);
-
+                eventListener.onClose();
                 eventThread.stop();
             }
 
             @Override
             public void onFailure(Throwable failure) {
-                emitter.emit(EVENT_ERROR, failure);
+                eventListener.onError(failure);
             }
         });
     }
 
+    public void emit(String event) throws IOException {
+        send(event, Utils.EMPTY_BYTE_ARRAY, Serializer.MT_DATA, Serializer.DT_EMPTY);
+    }
+
+    public void emit(String event, EmitOpts emitOpts) throws IOException {
+        emitTo(event, Utils.EMPTY_BYTE_ARRAY, Serializer.DT_EMPTY, emitOpts);
+    }
+
+    public void emit(String event, EventListener cb) throws IOException {
+        send(event, Utils.EMPTY_BYTE_ARRAY, Serializer.MT_DATA_WITH_ACK, Serializer.DT_EMPTY, cb);
+    }
+
     public void emit(String event, String data) throws IOException {
-        send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_TEXT);
+        send(event, data.getBytes(), Serializer.MT_DATA, Serializer.DT_STRING);
     }
 
     public void emit(String event, String data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.getBytes(), Serializer.DT_TEXT, emitOpts);
+        emitTo(event, data.getBytes(), Serializer.DT_STRING, emitOpts);
     }
 
-    public void emit(String event, String data, Emitter.Listener cb) throws IOException {
-        send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_TEXT, cb);
+    public void emit(String event, String data, EventListener cb) throws IOException {
+        send(event, data.getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_STRING, cb);
     }
 
     public void emit(String event, long data) throws IOException {
@@ -139,7 +150,7 @@ public class Socket {
         emitTo(event, Utils.int48ToByteArray(data), Serializer.DT_INTEGER, emitOpts);
     }
 
-    public void emit(String event, long data, Emitter.Listener cb) throws IOException {
+    public void emit(String event, long data, EventListener cb) throws IOException {
         send(event, Utils.int48ToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_INTEGER, cb);
     }
 
@@ -151,32 +162,20 @@ public class Socket {
         emitTo(event, Utils.doubleToByteArray(data), Serializer.DT_DECIMAL, emitOpts);
     }
 
-    public void emit(String event, double data, Emitter.Listener cb) throws IOException {
+    public void emit(String event, double data, EventListener cb) throws IOException {
         send(event, Utils.doubleToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_DECIMAL, cb);
     }
 
-    public void emit(String event, JSONObject data) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_JSON);
+    public void emit(String event, Object data) throws IOException {
+        send(event, opts.objectSerializer.serialize(data), Serializer.MT_DATA, Serializer.DT_OBJECT);
     }
 
-    public void emit(String event, JSONObject data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.toString().getBytes(), Serializer.DT_JSON, emitOpts);
+    public void emit(String event, Object data, EmitOpts emitOpts) throws IOException {
+        emitTo(event, opts.objectSerializer.serialize(data), Serializer.DT_OBJECT, emitOpts);
     }
 
-    public void emit(String event, JSONObject data, Emitter.Listener cb) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_JSON, cb);
-    }
-
-    public void emit(String event, JSONArray data) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA, Serializer.DT_JSON);
-    }
-
-    public void emit(String event, JSONArray data, EmitOpts emitOpts) throws IOException {
-        emitTo(event, data.toString().getBytes(), Serializer.DT_JSON, emitOpts);
-    }
-
-    public void emit(String event, JSONArray data, Emitter.Listener cb) throws IOException {
-        send(event, data.toString().getBytes(), Serializer.MT_DATA_WITH_ACK, Serializer.DT_JSON, cb);
+    public void emit(String event, Object data, EventListener cb) throws IOException {
+        send(event, opts.objectSerializer.serialize(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_OBJECT, cb);
     }
 
     public void emit(String event, boolean data) throws IOException {
@@ -187,7 +186,7 @@ public class Socket {
         emitTo(event, Utils.booleanToByteArray(data), Serializer.DT_BOOLEAN, emitOpts);
     }
 
-    public void emit(String event, boolean data, Emitter.Listener cb) throws IOException {
+    public void emit(String event, boolean data, EventListener cb) throws IOException {
         send(event, Utils.booleanToByteArray(data), Serializer.MT_DATA_WITH_ACK, Serializer.DT_BOOLEAN, cb);
     }
 
@@ -199,40 +198,28 @@ public class Socket {
         emitTo(event, data, Serializer.DT_BINARY, emitOpts);
     }
 
-    public void emit(String event, byte[] data, Emitter.Listener cb) throws IOException {
+    public void emit(String event, byte[] data, EventListener cb) throws IOException {
         send(event, data, Serializer.MT_DATA_WITH_ACK, Serializer.DT_BINARY, cb);
     }
 
     public void join(String room) throws IOException {
-        send("", room.getBytes(), Serializer.MT_JOIN_ROOM, Serializer.DT_TEXT);
+        send(Utils.EMPTY_STRING, room.getBytes(), Serializer.MT_JOIN_ROOM, Serializer.DT_STRING);
     }
 
     public void leave(String room) throws IOException {
-        send("", room.getBytes(), Serializer.MT_LEAVE_ROOM, Serializer.DT_TEXT);
+        send(Utils.EMPTY_STRING, room.getBytes(), Serializer.MT_LEAVE_ROOM, Serializer.DT_STRING);
     }
 
     public void leaveAll() throws IOException {
-        send("", new byte[0], Serializer.MT_LEAVE_ALL_ROOMS, Serializer.DT_TEXT);
+        send(Utils.EMPTY_STRING, Utils.EMPTY_BYTE_ARRAY, Serializer.MT_LEAVE_ALL_ROOMS, Serializer.DT_STRING);
     }
 
-    public int getVersion() {
+    public int getSerializerVersion() {
         return Serializer.VERSION;
     }
 
-    public void on(String event, Emitter.Listener fn) {
-        emitter.on(event, fn);
-    }
-
-    public void once(String event, Emitter.Listener fn) {
-        emitter.once(event, fn);
-    }
-
-    public void removeListener(String event, Emitter.Listener fn) {
-        emitter.removeListener(event, fn);
-    }
-
-    public void removeAllListeners(String event) {
-        emitter.removeAllListeners(event);
+    public void setEventListener(EventListener eventListener) {
+        this.eventListener = eventListener;
     }
 
     private void flushQueue() throws IOException {
@@ -253,7 +240,7 @@ public class Socket {
             @Override
             public Void call() throws Exception {
                 Thread.sleep(opts.reconnectInterval);
-                emitter.emit(EVENT_RECONNECTING);
+                eventListener.onReconnecting();
                 connect();
                 return null;
             }
@@ -275,24 +262,15 @@ public class Socket {
     }
 
     private void send(String event, byte[] data, byte mt, byte dt) throws IOException {
-        send(event, data, mt, dt, -1, null);
+        send(event, data, mt, dt, nextMessageId());
+    }
+
+    private void send(String event, byte[] data, byte mt, byte dt, EventListener cb) throws IOException {
+        acks.put(messageId, cb);
+        send(event, data, mt, dt, nextMessageId());
     }
 
     private void send(String event, byte[] data, byte mt, byte dt, int messageId) throws IOException {
-        send(event, data, mt, dt, messageId, null);
-    }
-
-    private void send(String event, byte[] data, byte mt, byte dt, Emitter.Listener cb) throws IOException {
-        send(event, data, mt, dt, -1, cb);
-    }
-
-    private void send(String event, byte[] data, byte mt, byte dt, int messageId, Emitter.Listener cb) throws IOException {
-        messageId = messageId > 0 ? messageId : nextMessageId();
-
-        if (cb != null) {
-            acks.put(messageId, cb);
-        }
-
         byte[] message = Serializer.serialize(event.getBytes(), data, mt, dt, messageId);
 
         if (connected) {
@@ -318,7 +296,7 @@ public class Socket {
         return new Ack() {
             @Override
             public void send(String data) {
-                send(data.getBytes(), Serializer.DT_TEXT);
+                send(data.getBytes(), Serializer.DT_STRING);
             }
 
             @Override
@@ -332,13 +310,8 @@ public class Socket {
             }
 
             @Override
-            public void send(JSONObject data) {
-                send(data.toString().getBytes(), Serializer.DT_JSON);
-            }
-
-            @Override
-            public void send(JSONArray data) {
-                send(data.toString().getBytes(), Serializer.DT_JSON);
+            public void send(Object data) {
+                send(opts.objectSerializer.serialize(data), Serializer.DT_OBJECT);
             }
 
             @Override
@@ -355,10 +328,15 @@ public class Socket {
                 try {
                     Socket.this.send("", data, Serializer.MT_ACK, dt, message.messageId);
                 } catch (IOException e) {
-                    emitter.emit(EVENT_ERROR, e);
+                    eventListener.onError(e);
                 }
             }
         };
+    }
+
+    public interface ObjectSerializer {
+        byte[] serialize(Object object);
+        Object deserialize(byte[] data);
     }
 
     public interface Ack {
@@ -368,9 +346,7 @@ public class Socket {
 
         void send(double data);
 
-        void send(JSONObject data);
-
-        void send(JSONArray data);
+        void send(Object data);
 
         void send(boolean data);
 
@@ -404,6 +380,7 @@ public class Socket {
         private boolean useQueue = true;
         private int queueSize = 1024;
         private int timeout = 0; // Disabled by default
+        private ObjectSerializer objectSerializer = null;
 
         public Opts reconnect(boolean reconnect) {
             this.reconnect = reconnect;
@@ -429,6 +406,11 @@ public class Socket {
             this.timeout = timeout;
             return this;
         }
+
+        public Opts objectSerializer(ObjectSerializer objectSerializer) {
+            this.objectSerializer = objectSerializer;
+            return this;
+        }
     }
 
     private class EventThread {
@@ -452,21 +434,22 @@ public class Socket {
     private class SocketReceiverThread extends Thread {
         private Reader reader = new Reader();
         private byte[] chunk = new byte[1024];
-        private final Message MESSAGE = new Message();
+        private final Message message = new Message();
 
         @Override
         public void run() {
             int bytesRead;
             try {
+                socket.setSoTimeout(opts.timeout);
                 while ((bytesRead = bufferedInputStream.read(chunk)) != -1) {
                     ArrayList<byte[]> buffers = reader.read(chunk, bytesRead);
                     for (byte[] buffer : buffers) {
-                        process(Serializer.deserialize(buffer, MESSAGE));
+                        process(Serializer.deserialize(buffer, message));
                     }
                 }
 
             } catch (IOException e) {
-                emitter.emit(EVENT_ERROR, e);
+                eventListener.onError(e);
             }
 
             if (opts.reconnect && !manuallyClosed) {
@@ -475,31 +458,77 @@ public class Socket {
                 eventThread.stop();
             }
 
-            emitter.emit(EVENT_CLOSE);
+            eventListener.onClose();
 
             connected = false;
         }
 
-        private void process(Message message) {
+        private void process(Message message) throws UnsupportedEncodingException {
             switch (message.mt) {
                 case Serializer.MT_DATA:
-                    emitter.emit(message.event, message.data);
+                    processWithListener(message, eventListener, false);
                     break;
                 case Serializer.MT_DATA_WITH_ACK:
-                    emitter.emit(message.event, message.data, createAck(message));
+                    processWithListener(message, eventListener, true);
                     break;
                 case Serializer.MT_ACK:
                     if (acks.containsKey(message.messageId)) {
-                        acks.get(message.messageId).call(message.data);
+                        processWithListener(message, acks.get(message.messageId), false);
                         acks.remove(message.messageId);
                     }
                     break;
                 case Serializer.MT_REGISTER:
-                    id = (String) message.data;
-                    emitter.emit(EVENT_CONNECT);
+                    id = message.dataToString();
+                    eventListener.onConnect();
                     break;
-                default:
-                    throw new RuntimeException("Not implemented message type " + message.mt);
+                case Serializer.MT_ERROR:
+                    eventListener.onError(new Exception(message.dataToString()));
+            }
+        }
+
+        private void processWithListener(Message message, EventListener eventListener, boolean dataWithAck) throws UnsupportedEncodingException {
+            switch (message.dt) {
+                case Serializer.DT_STRING:
+                    if (dataWithAck) {
+                        eventListener.onString(message.eventToString(), message.dataToString(), createAck(message));
+                    } else {
+                        eventListener.onString(message.eventToString(), message.dataToString());
+                    }
+                    break;
+                case Serializer.DT_BINARY:
+                    if (dataWithAck) {
+                        eventListener.onBinary(message.eventToString(), message.data, createAck(message));
+                    } else {
+                        eventListener.onBinary(message.eventToString(), message.data);
+                    }
+                    break;
+                case Serializer.DT_INTEGER:
+                    if (dataWithAck) {
+                        eventListener.onInteger(message.eventToString(), message.dataToInteger(), createAck(message));
+                    } else {
+                        eventListener.onInteger(message.eventToString(), message.dataToInteger());
+                    }
+                    break;
+                case Serializer.DT_DECIMAL:
+                    if (dataWithAck) {
+                        eventListener.onDecimal(message.eventToString(), message.dataToDouble(), createAck(message));
+                    } else {
+                        eventListener.onDecimal(message.eventToString(), message.dataToDouble());
+                    }
+                    break;
+                case Serializer.DT_OBJECT:
+                    if (dataWithAck) {
+                        eventListener.onObject(message.eventToString(), opts.objectSerializer.deserialize(message.data), createAck(message));
+                    } else {
+                        eventListener.onObject(message.eventToString(), opts.objectSerializer.deserialize(message.data));
+                    }
+                    break;
+                case Serializer.DT_BOOLEAN:
+                    if (dataWithAck) {
+                        eventListener.onBoolean(message.eventToString(), message.dataToBoolean(), createAck(message));
+                    } else {
+                        eventListener.onBoolean(message.eventToString(), message.dataToBoolean());
+                    }
             }
         }
     }

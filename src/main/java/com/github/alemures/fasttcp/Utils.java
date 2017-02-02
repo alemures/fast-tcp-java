@@ -3,8 +3,8 @@ package com.github.alemures.fasttcp;
 import java.util.Collection;
 
 class Utils {
-    private static final byte CHAR_CODE_OPEN_BRACKET = 91;
-    private static final byte CHAR_CODE_OPEN_BRACE = 123;
+    static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
+    static final String EMPTY_STRING = "";
 
     static byte[] int48ToByteArray(long value) {
         return new byte[]{
@@ -95,14 +95,6 @@ class Utils {
 
     static boolean readBoolean(byte[] buffer, int offset) {
         return buffer[offset] == 1;
-    }
-
-    static boolean isJsonObject(byte[] buffer, int offset) {
-        return buffer[offset] == CHAR_CODE_OPEN_BRACE;
-    }
-
-    static boolean isJsonArray(byte[] buffer, int offset) {
-        return buffer[offset] == CHAR_CODE_OPEN_BRACKET;
     }
 
     static String byteArrayToString(byte[] bytes) {
