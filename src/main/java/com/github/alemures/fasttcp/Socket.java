@@ -107,6 +107,8 @@ public class Socket {
         }).addCallback(new FutureCallback<Void>() {
             @Override
             public void onSuccess(Void result) {
+                connected = false;
+
                 eventListener.onClose();
                 eventThread.stop();
             }
@@ -253,11 +255,11 @@ public class Socket {
         }
 
         if (emitOpts.socketIds != null && emitOpts.socketIds.size() > 0) {
-            send(Utils.join(emitOpts.socketIds, ",") + "|" + event, data, Serializer.MT_DATA_TO_SOCKET, dt);
+            send(Utils.buildDataToEvent(emitOpts.socketIds, event), data, Serializer.MT_DATA_TO_SOCKET, dt);
         }
 
         if (emitOpts.rooms != null && emitOpts.rooms.size() > 0) {
-            send(Utils.join(emitOpts.rooms, ",") + "|" + event, data, Serializer.MT_DATA_TO_ROOM, dt);
+            send(Utils.buildDataToEvent(emitOpts.rooms, event), data, Serializer.MT_DATA_TO_ROOM, dt);
         }
     }
 
@@ -266,8 +268,9 @@ public class Socket {
     }
 
     private void send(String event, byte[] data, byte mt, byte dt, EventListener cb) throws IOException {
+        int messageId = nextMessageId();
         acks.put(messageId, cb);
-        send(event, data, mt, dt, nextMessageId());
+        send(event, data, mt, dt, messageId);
     }
 
     private void send(String event, byte[] data, byte mt, byte dt, int messageId) throws IOException {
@@ -326,7 +329,7 @@ public class Socket {
 
             private void send(byte[] data, byte dt) {
                 try {
-                    Socket.this.send("", data, Serializer.MT_ACK, dt, message.messageId);
+                    Socket.this.send(Utils.EMPTY_STRING, data, Serializer.MT_ACK, dt, message.messageId);
                 } catch (IOException e) {
                     eventListener.onError(e);
                 }
@@ -336,6 +339,7 @@ public class Socket {
 
     public interface ObjectSerializer {
         byte[] serialize(Object object);
+
         Object deserialize(byte[] data);
     }
 
@@ -447,88 +451,94 @@ public class Socket {
                         process(Serializer.deserialize(buffer, message));
                     }
                 }
-
             } catch (IOException e) {
-                eventListener.onError(e);
+                if (!manuallyClosed) {
+                    eventListener.onError(e);
+                }
             }
 
-            if (opts.reconnect && !manuallyClosed) {
-                reconnect();
-            } else {
-                eventThread.stop();
+            if (!manuallyClosed) {
+                eventListener.onClose();
+                connected = false;
+
+                if (opts.reconnect) {
+                    reconnect();
+                } else {
+                    eventThread.stop();
+                }
             }
-
-            eventListener.onClose();
-
-            connected = false;
         }
 
         private void process(Message message) throws UnsupportedEncodingException {
             switch (message.mt) {
                 case Serializer.MT_DATA:
-                    processWithListener(message, eventListener, false);
+                    deliverMessage(message, eventListener);
                     break;
                 case Serializer.MT_DATA_WITH_ACK:
-                    processWithListener(message, eventListener, true);
+                    deliverMessageWithAck(message, eventListener, createAck(message));
                     break;
                 case Serializer.MT_ACK:
                     if (acks.containsKey(message.messageId)) {
-                        processWithListener(message, acks.get(message.messageId), false);
+                        deliverMessage(message, acks.get(message.messageId));
                         acks.remove(message.messageId);
                     }
                     break;
                 case Serializer.MT_REGISTER:
-                    id = message.dataToString();
+                    id = message.getDataAsString();
                     eventListener.onConnect();
                     break;
                 case Serializer.MT_ERROR:
-                    eventListener.onError(new Exception(message.dataToString()));
+                    eventListener.onError(new Exception(message.getDataAsString()));
             }
         }
 
-        private void processWithListener(Message message, EventListener eventListener, boolean dataWithAck) throws UnsupportedEncodingException {
+        private void deliverMessage(Message message, EventListener eventListener) throws UnsupportedEncodingException {
             switch (message.dt) {
                 case Serializer.DT_STRING:
-                    if (dataWithAck) {
-                        eventListener.onString(message.eventToString(), message.dataToString(), createAck(message));
-                    } else {
-                        eventListener.onString(message.eventToString(), message.dataToString());
-                    }
+                    eventListener.onString(message.event, message.getDataAsString());
                     break;
                 case Serializer.DT_BINARY:
-                    if (dataWithAck) {
-                        eventListener.onBinary(message.eventToString(), message.data, createAck(message));
-                    } else {
-                        eventListener.onBinary(message.eventToString(), message.data);
-                    }
+                    eventListener.onBinary(message.event, message.data);
                     break;
                 case Serializer.DT_INTEGER:
-                    if (dataWithAck) {
-                        eventListener.onInteger(message.eventToString(), message.dataToInteger(), createAck(message));
-                    } else {
-                        eventListener.onInteger(message.eventToString(), message.dataToInteger());
-                    }
+                    eventListener.onInteger(message.event, message.getDataAsInteger());
                     break;
                 case Serializer.DT_DECIMAL:
-                    if (dataWithAck) {
-                        eventListener.onDecimal(message.eventToString(), message.dataToDouble(), createAck(message));
-                    } else {
-                        eventListener.onDecimal(message.eventToString(), message.dataToDouble());
-                    }
+                    eventListener.onDecimal(message.event, message.getDataAsDecimal());
                     break;
                 case Serializer.DT_OBJECT:
-                    if (dataWithAck) {
-                        eventListener.onObject(message.eventToString(), opts.objectSerializer.deserialize(message.data), createAck(message));
-                    } else {
-                        eventListener.onObject(message.eventToString(), opts.objectSerializer.deserialize(message.data));
-                    }
+                    eventListener.onObject(message.event, opts.objectSerializer.deserialize(message.data));
                     break;
                 case Serializer.DT_BOOLEAN:
-                    if (dataWithAck) {
-                        eventListener.onBoolean(message.eventToString(), message.dataToBoolean(), createAck(message));
-                    } else {
-                        eventListener.onBoolean(message.eventToString(), message.dataToBoolean());
-                    }
+                    eventListener.onBoolean(message.event, message.getDataAsBoolean());
+                    break;
+                case Serializer.DT_EMPTY:
+                    eventListener.onEmpty(message.event);
+            }
+        }
+
+        private void deliverMessageWithAck(Message message, EventListener eventListener, Ack ack) throws UnsupportedEncodingException {
+            switch (message.dt) {
+                case Serializer.DT_STRING:
+                    eventListener.onString(message.event, message.getDataAsString(), ack);
+                    break;
+                case Serializer.DT_BINARY:
+                    eventListener.onBinary(message.event, message.data, ack);
+                    break;
+                case Serializer.DT_INTEGER:
+                    eventListener.onInteger(message.event, message.getDataAsInteger(), ack);
+                    break;
+                case Serializer.DT_DECIMAL:
+                    eventListener.onDecimal(message.event, message.getDataAsDecimal(), ack);
+                    break;
+                case Serializer.DT_OBJECT:
+                    eventListener.onObject(message.event, opts.objectSerializer.deserialize(message.data), ack);
+                    break;
+                case Serializer.DT_BOOLEAN:
+                    eventListener.onBoolean(message.event, message.getDataAsBoolean(), ack);
+                    break;
+                case Serializer.DT_EMPTY:
+                    eventListener.onEmpty(message.event, ack);
             }
         }
     }

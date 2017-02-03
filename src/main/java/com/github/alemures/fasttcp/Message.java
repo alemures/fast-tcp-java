@@ -3,7 +3,7 @@ package com.github.alemures.fasttcp;
 import java.io.UnsupportedEncodingException;
 
 class Message {
-    byte[] event;
+    String event;
     byte[] data;
     int messageId;
     byte mt;
@@ -16,7 +16,7 @@ class Message {
         return setAndGet(null, data.getBytes(), Serializer.MT_ERROR, Serializer.DT_STRING, 0);
     }
 
-    Message setAndGet(byte[] event, byte[] data, byte mt, byte dt, int messageId) {
+    Message setAndGet(String event, byte[] data, byte mt, byte dt, int messageId) {
         this.event = event;
         this.data = data;
         this.messageId = messageId;
@@ -25,23 +25,19 @@ class Message {
         return this;
     }
 
-    String eventToString() throws UnsupportedEncodingException {
-        return new String(event, "UTF-8");
-    }
-
-    String dataToString() throws UnsupportedEncodingException {
+    String getDataAsString() throws UnsupportedEncodingException {
         return new String(data, "UTF-8");
     }
 
-    long dataToInteger() {
+    long getDataAsInteger() {
         return Utils.readInt48(data, 0);
     }
 
-    double dataToDouble() {
+    double getDataAsDecimal() {
         return Utils.readDouble(data, 0);
     }
 
-    boolean dataToBoolean() {
+    boolean getDataAsBoolean() {
         return Utils.readBoolean(data, 0);
     }
 }

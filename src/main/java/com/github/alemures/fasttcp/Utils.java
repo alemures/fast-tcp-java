@@ -1,6 +1,7 @@
 package com.github.alemures.fasttcp;
 
 import java.util.Collection;
+import java.util.Set;
 
 class Utils {
     static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
@@ -106,7 +107,11 @@ class Utils {
         return sb.toString();
     }
 
-    static String join(Collection<String> collection, String delimiter) {
+    static String buildDataToEvent(Set<String> recipients, String event) {
+        return join(recipients, ",") + "|" + event;
+    }
+
+    private static String join(Collection<String> collection, String delimiter) {
         StringBuilder sb = new StringBuilder();
         for (String item : collection) {
             sb.append(item).append(delimiter);

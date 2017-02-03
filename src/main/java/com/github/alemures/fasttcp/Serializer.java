@@ -60,7 +60,7 @@ class Serializer {
     }
 
     static Message deserialize(byte[] buffer, Message message) throws UnsupportedEncodingException {
-        int offset = 4;
+        int offset = 4; // Skip message length
 
         byte version = buffer[offset++];
         if (version != VERSION) {
@@ -77,13 +77,13 @@ class Serializer {
         short eventLength = Utils.readShort(buffer, offset);
         offset += 2;
 
-        byte[] event = Arrays.copyOfRange(buffer, offset, offset + eventLength);
+        String event = new String(buffer, offset, eventLength, "UTF-8");
         offset += eventLength;
 
         int dataLength = Utils.readInt(buffer, offset);
         offset += 4;
 
-        byte[] data =  Arrays.copyOfRange(buffer, offset, offset + dataLength);
+        byte[] data = Arrays.copyOfRange(buffer, offset, offset + dataLength);
 
         return message.setAndGet(event, data, mt, dt, messageId);
     }
