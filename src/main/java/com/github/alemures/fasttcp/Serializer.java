@@ -59,12 +59,12 @@ class Serializer {
         return buffer;
     }
 
-    static Message deserialize(byte[] buffer, Message message) throws UnsupportedEncodingException {
+    static Message deserialize(byte[] buffer) throws UnsupportedEncodingException {
         int offset = 4; // Skip message length
 
         byte version = buffer[offset++];
         if (version != VERSION) {
-            return message.setErrorAndGet("Serializer version mismatch. Remote " + version + " Local " + VERSION);
+            return new Message("Serializer version mismatch. Remote " + version + " Local " + VERSION);
         }
 
         offset++; // Skip unused flags
@@ -85,6 +85,6 @@ class Serializer {
 
         byte[] data = Arrays.copyOfRange(buffer, offset, offset + dataLength);
 
-        return message.setAndGet(event, data, mt, dt, messageId);
+        return new Message(event, data, mt, dt, messageId);
     }
 }
