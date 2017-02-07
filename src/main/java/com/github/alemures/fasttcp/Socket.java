@@ -410,6 +410,8 @@ public class Socket {
         private boolean useQueue = true;
         private int queueSize = 1024;
         private int timeout = 0; // Disabled by default
+        private Boolean keepAlive = null;
+        private Boolean noDelay = null;
         private ObjectSerializer objectSerializer = new ObjectSerializer() {
             @Override
             public byte[] serialize(Object object) {
@@ -447,6 +449,16 @@ public class Socket {
             return this;
         }
 
+        public Options keepAlive(boolean enabled) {
+            this.keepAlive = enabled;
+            return this;
+        }
+
+        public Options noDelay(boolean enabled) {
+            this.noDelay = enabled;
+            return this;
+        }
+
         public Options objectSerializer(ObjectSerializer objectSerializer) {
             this.objectSerializer = objectSerializer;
             return this;
@@ -479,7 +491,7 @@ public class Socket {
         public void run() {
             int bytesRead;
             try {
-                socket.setSoTimeout(opts.timeout);
+                configureSocket();
                 while ((bytesRead = bufferedInputStream.read(chunk)) != -1) {
                     ArrayList<byte[]> buffers = reader.read(chunk, bytesRead);
                     for (byte[] buffer : buffers) {
@@ -501,6 +513,18 @@ public class Socket {
                 } else {
                     eventThread.stop();
                 }
+            }
+        }
+
+        private void configureSocket() throws IOException {
+            socket.setSoTimeout(opts.timeout);
+
+            if (opts.keepAlive != null) {
+                socket.setKeepAlive(opts.keepAlive);
+            }
+
+            if (opts.noDelay != null) {
+                socket.setTcpNoDelay(opts.noDelay);
             }
         }
 
