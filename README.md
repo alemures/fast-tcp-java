@@ -9,7 +9,7 @@ https://github.com/alemures/fast-tcp
 ```java
 Socket socket = new Socket("localhost", 5000);
 
-socket.emit("sum", new JSONObject().put("n1", 5).put("n2", 3), new Emitter.Listener() {
+socket.emit("add", 5, new Emitter.Listener() {
     @Override
     public void call(Object... data) {
         System.out.println("Result: " + data[0]);

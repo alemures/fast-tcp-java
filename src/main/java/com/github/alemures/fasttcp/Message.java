@@ -2,21 +2,20 @@ package com.github.alemures.fasttcp;
 
 class Message {
     String event;
-    Object data;
-    int messageId;
+    byte[] data;
+    int id;
     byte mt;
     byte dt;
 
-    Message() {
+    Message(String data) {
+        this(null, data.getBytes(), Serializer.MT_ERROR, Serializer.DT_STRING, 0);
     }
 
-    Message setAndGet(String event, Object data, int messageId, byte mt, byte dt) {
+    Message(String event, byte[] data, byte mt, byte dt, int id) {
         this.event = event;
         this.data = data;
-        this.messageId = messageId;
+        this.id = id;
         this.mt = mt;
         this.dt = dt;
-
-        return this;
     }
 }

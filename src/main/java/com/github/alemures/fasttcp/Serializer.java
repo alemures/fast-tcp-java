@@ -1,22 +1,20 @@
 package com.github.alemures.fasttcp;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
-
-import javax.management.RuntimeErrorException;
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
 class Serializer {
     static final byte VERSION = 1;
 
-    static final byte DT_TEXT = 1;
+    static final byte DT_STRING = 1;
     static final byte DT_BINARY = 2;
     static final byte DT_INTEGER = 3;
     static final byte DT_DECIMAL = 4;
-    static final byte DT_JSON = 5;
+    static final byte DT_OBJECT = 5;
     static final byte DT_BOOLEAN = 6;
+    static final byte DT_EMPTY = 7;
 
+    static final byte MT_ERROR = 0;
     static final byte MT_REGISTER = 1;
     static final byte MT_DATA = 2;
     static final byte MT_DATA_TO_SOCKET = 3;
@@ -61,13 +59,12 @@ class Serializer {
         return buffer;
     }
 
-    static Message deserialize(byte[] buffer, Message message) throws UnsupportedEncodingException {
-        int offset = 4;
+    static Message deserialize(byte[] buffer) throws UnsupportedEncodingException {
+        int offset = 4; // Skip message length
 
         byte version = buffer[offset++];
         if (version != VERSION) {
-            throw new RuntimeException("Message version " + version
-                    + " and Serializer version " + VERSION + " doesn\'t match");
+            return new Message("Serializer version mismatch. Remote " + version + " Local " + VERSION);
         }
 
         offset++; // Skip unused flags
@@ -80,50 +77,14 @@ class Serializer {
         short eventLength = Utils.readShort(buffer, offset);
         offset += 2;
 
-        byte[] eventBytes = Arrays.copyOfRange(buffer, offset, offset + eventLength);
-        String event = new String(eventBytes, "UTF-8");
+        String event = new String(buffer, offset, eventLength, "UTF-8");
         offset += eventLength;
 
         int dataLength = Utils.readInt(buffer, offset);
         offset += 4;
 
-        switch (dt) {
-            case DT_TEXT:
-                return message.setAndGet(event, deserializeDataAsString(buffer, offset, dataLength), messageId, mt, dt);
-            case DT_BINARY:
-                return message.setAndGet(event, deserializeDataAsByteArray(buffer, offset, dataLength), messageId, mt, dt);
-            case DT_JSON:
-                if (Utils.isJsonObject(buffer, offset)) {
-                    return message.setAndGet(event, deserializeDataAsJsonObject(buffer, offset, dataLength), messageId, mt, dt);
-                } else if (Utils.isJsonArray(buffer, offset)) {
-                    return message.setAndGet(event, deserializeDataAsJsonArray(buffer, offset, dataLength), messageId, mt, dt);
-                } else {
-                    throw new RuntimeErrorException(new Error("Invalid json"));
-                }
-            case DT_INTEGER:
-                return message.setAndGet(event, Utils.readInt48(buffer, offset), messageId, mt, dt);
-            case DT_DECIMAL:
-                return message.setAndGet(event, Utils.readDouble(buffer, offset), messageId, mt, dt);
-            case DT_BOOLEAN:
-                return message.setAndGet(event, Utils.readBoolean(buffer, offset), messageId, mt, dt);
-            default:
-                throw new RuntimeErrorException(new Error("Invalid data type: " + dt));
-        }
-    }
+        byte[] data = Arrays.copyOfRange(buffer, offset, offset + dataLength);
 
-    private static byte[] deserializeDataAsByteArray(byte[] buffer, int offset, int dataLength) {
-        return Arrays.copyOfRange(buffer, offset, offset + dataLength);
-    }
-
-    private static String deserializeDataAsString(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
-        return new String(deserializeDataAsByteArray(buffer, offset, dataLength), "UTF-8");
-    }
-
-    private static JSONObject deserializeDataAsJsonObject(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
-        return new JSONObject(deserializeDataAsString(buffer, offset, dataLength));
-    }
-
-    private static JSONArray deserializeDataAsJsonArray(byte[] buffer, int offset, int dataLength) throws UnsupportedEncodingException {
-        return new JSONArray(deserializeDataAsString(buffer, offset, dataLength));
+        return new Message(event, data, mt, dt, messageId);
     }
 }
