@@ -9,10 +9,10 @@ https://github.com/alemures/fast-tcp
 ```java
 Socket socket = new Socket("localhost", 5000);
 
-socket.emit("add", 5, new Emitter.Listener() {
+socket.emit("login", "username", new Emitter.Listener() {
     @Override
     public void call(Object... data) {
-        System.out.println("Result: " + data[0]);
+        System.out.println("Login response: " + data[0]);
     }
 });
 

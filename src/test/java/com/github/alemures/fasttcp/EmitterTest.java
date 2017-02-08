@@ -4,7 +4,6 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EmitterTest {
@@ -23,7 +22,7 @@ public class EmitterTest {
             }
         });
 
-        Assert.assertEquals("The number of listeners should be 1", 1, emitter.listeners("testEvent").size());
+        Assert.assertTrue("Should have one listener", emitter.hasListeners("testEvent"));
     }
 
     @Test
@@ -66,14 +65,8 @@ public class EmitterTest {
             }
         });
 
-        emitter.on("testEvent", new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-            }
-        });
-
         emitter.removeAllListeners("testEvent");
-        Assert.assertEquals("The number of listeners should be 0", 0, emitter.listeners("testEvent").size());
+        Assert.assertFalse("Should not have any listener", emitter.hasListeners("testEvent"));
     }
 
     @Test
@@ -93,36 +86,30 @@ public class EmitterTest {
         });
 
         emitter.removeListener("testEvent", listener);
-        Assert.assertEquals("The number of listeners should be 1", 1, emitter.listeners("testEvent").size());
+        int count = emitter.listenerCount("testEvent");
+        Assert.assertEquals("Should have one listener", 1, count);
     }
 
     @Test
-    public void shouldReturnAListenerList() {
+    public void shouldReturnListenerCount() {
         emitter.on("testEvent", new Emitter.Listener() {
             @Override
             public void call(Object... args) {
             }
         });
 
-        emitter.on("testEvent", new Emitter.Listener() {
-            @Override
-            public void call(Object... args) {
-            }
-        });
-
-        List<Emitter.Listener> list = emitter.listeners("testEvent");
-        Assert.assertEquals("The number of listeners should be 2", 2, list.size());
+        int count = emitter.listenerCount("testEvent");
+        Assert.assertEquals("Should have one listener", 1, count);
     }
 
     @Test
     public void shouldReturnIfHasListeners() {
+        Assert.assertFalse("Should not have listeners", emitter.hasListeners("testEvent"));
         emitter.on("testEvent", new Emitter.Listener() {
             @Override
             public void call(Object... args) {
             }
         });
-
-        boolean hasListeners = emitter.hasListeners("testEvent");
-        Assert.assertTrue("The result should be true", hasListeners);
+        Assert.assertTrue("Should have listeners", emitter.hasListeners("testEvent"));
     }
 }

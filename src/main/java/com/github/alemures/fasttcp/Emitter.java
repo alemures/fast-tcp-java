@@ -1,21 +1,14 @@
 package com.github.alemures.fasttcp;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
 
 public class Emitter {
     private Map<String, LinkedList<Listener>> callbacks = new HashMap<>();
 
     Emitter() {
-    }
-
-    private static boolean sameAs(Listener fn, Listener internal) {
-        if (fn.equals(internal)) {
-            return true;
-        } else if (internal instanceof OnceListener) {
-            return fn.equals(((OnceListener) internal).fn);
-        } else {
-            return false;
-        }
     }
 
     Emitter on(String event, Listener fn) {
@@ -28,7 +21,7 @@ public class Emitter {
         return this;
     }
 
-    Emitter once(final String event, final Listener fn) {
+    Emitter once(String event, Listener fn) {
         on(event, new OnceListener(event, fn));
         return this;
     }
@@ -44,7 +37,7 @@ public class Emitter {
             Iterator<Listener> it = callbacks.iterator();
             while (it.hasNext()) {
                 Listener internal = it.next();
-                if (Emitter.sameAs(fn, internal)) {
+                if (sameAs(fn, internal)) {
                     it.remove();
                     break;
                 }
@@ -63,19 +56,27 @@ public class Emitter {
         return this;
     }
 
-    List<Listener> listeners(String event) {
+    int listenerCount(String event) {
         LinkedList<Listener> callbacks = this.callbacks.get(event);
-        return callbacks != null ?
-                new ArrayList<Listener>(callbacks) : new ArrayList<Listener>(0);
+        return callbacks == null ? 0 : callbacks.size();
     }
 
     boolean hasListeners(String event) {
-        LinkedList<Listener> callbacks = this.callbacks.get(event);
-        return callbacks != null && !callbacks.isEmpty();
+        return listenerCount(event) > 0;
     }
 
     public interface Listener {
         void call(Object... args);
+    }
+
+    private boolean sameAs(Listener fn, Listener internal) {
+        if (fn.equals(internal)) {
+            return true;
+        } else if (internal instanceof OnceListener) {
+            return fn.equals(((OnceListener) internal).fn);
+        } else {
+            return false;
+        }
     }
 
     private class OnceListener implements Listener {
