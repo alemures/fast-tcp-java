@@ -25,7 +25,6 @@ public class FuturesTest {
     @AfterClass
     public static void stopExecutorService() {
         executor.shutdown();
-        ;
     }
 
     @Test

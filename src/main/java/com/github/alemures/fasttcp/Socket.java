@@ -312,12 +312,6 @@ public class Socket {
         return messageId;
     }
 
-    private void checkObjectSerializer() {
-        if (opts.objectSerializer == null) {
-            throw new RuntimeException("objectSerializer not provided, use Socket.Options");
-        }
-    }
-
     private Ack createAck(final Message message) {
         return new Ack() {
             @Override

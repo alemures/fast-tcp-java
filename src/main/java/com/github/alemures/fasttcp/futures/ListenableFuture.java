@@ -11,13 +11,13 @@ public class ListenableFuture<V> {
         resolve();
     }
 
-    public void setResult(V result) {
+    void setResult(V result) {
         this.result = result;
         isCompleted = true;
         resolve();
     }
 
-    public void setFailure(Throwable failure) {
+    void setFailure(Throwable failure) {
         this.failure = failure;
         isCompleted = true;
         resolve();
